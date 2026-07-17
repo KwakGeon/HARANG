@@ -21,6 +21,8 @@
     #loading { text-align: center; padding: 60px; color: #888; }
     th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
     th[data-sort]:hover { background: #293e56 !important; }
+    .mvp-popover { max-width: 420px !important; }
+    .mvp-popover .popover-body { padding: .75rem 1rem; }
   </style>
 </head>
 <body>
@@ -594,23 +596,24 @@ function initMVPPopovers() {
     const withErr = (p['타율']     || 0).toFixed(3);
     const records = p['실책_기록'] || [];
 
-    let content = `<div style="min-width:190px">
-      <table class="table table-sm table-borderless mb-1 small">
-        <tr><td class="py-0 pe-3 text-muted">정규타율</td>
-            <td class="py-0 fw-bold">${reg}</td></tr>
-        <tr><td class="py-0 pe-3 text-muted">실책포함</td>
-            <td class="py-0 fw-bold text-primary">${withErr}</td></tr>
-      </table>`;
+    let content = `<div style="min-width:360px">
+      <div class="d-flex gap-4 mb-2">
+        <div><span class="text-muted small">정규타율</span><br><span class="fw-bold fs-6">${reg}</span></div>
+        <div><span class="text-muted small">실책·R·낫아웃 포함</span><br><span class="fw-bold fs-6 text-primary">${withErr}</span></div>
+      </div>`;
 
     if (records.length) {
-      content += `<hr class="my-1"><div class="small fw-bold mb-1">실책 기록</div>`;
+      content += `<hr class="my-1"><div class="small fw-bold mb-1">비히트 출루 기록</div>`;
       records.forEach(r => {
-        const plays = (r['플레이'] || []).map(escHtml).join(', ');
-        content += `<div class="small mb-1">${escHtml(r['날짜'])} vs <strong>${escHtml(r['상대팀'])}</strong><br>
-          <span class="text-muted">${plays}</span></div>`;
+        const plays = (r['플레이'] || []).map(escHtml).join(' · ');
+        content += `<div class="d-flex align-items-baseline gap-2 small mb-1">
+          <span class="text-nowrap text-muted">${escHtml(r['날짜'])}</span>
+          <span class="fw-bold text-nowrap">vs ${escHtml(r['상대팀'])}</span>
+          <span class="text-muted">${plays}</span>
+        </div>`;
       });
     } else {
-      content += `<div class="small text-muted mt-1">실책 출루 없음</div>`;
+      content += `<div class="small text-muted mt-1">비히트 출루 없음</div>`;
     }
     content += `</div>`;
 
@@ -620,19 +623,20 @@ function initMVPPopovers() {
       trigger: 'click',
       placement: 'auto',
       sanitize: false,
+      customClass: 'mvp-popover',
     });
   });
 
   if (!_mvpPopoverListenerAdded) {
     _mvpPopoverListenerAdded = true;
     document.addEventListener('click', e => {
-      if (!e.target.closest('.mvp-avg-info') && !e.target.closest('.popover')) {
+      if (!e.target.closest('.mvp-avg-info') && !e.target.closest('.mvp-popover')) {
         document.querySelectorAll('.mvp-avg-info').forEach(btn => {
           const inst = bootstrap.Popover.getInstance(btn);
           if (inst) inst.hide();
         });
       }
-    });
+    }, true);  // capture phase로 등록해 다른 이벤트보다 먼저 처리
   }
 }
 

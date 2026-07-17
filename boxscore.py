@@ -32,6 +32,13 @@ _PLAY_SUBSTRINGS = (
 _PLAY_END = frozenset("안뜬땅선플")
 
 
+def _is_reach_play(play):
+    """타자가 비히트 출루한 플레이 판별 (실책·R출루·낫아웃)"""
+    if not play or "송구" in play:
+        return False
+    return play.endswith("실") or play.endswith("R") or "낫아웃" in play
+
+
 def _is_play(text):
     """텍스트가 플레이 기록인지 판별 (True면 선수 이름이 아님)"""
     if not text:
@@ -399,8 +406,8 @@ def extract_player_stats(bs):
         볼넷 = sum(1 for p in plays if "4구" in p)
         사구 = sum(1 for p in plays if "몸맞" in p)
         삼진 = sum(1 for p in plays if "삼진" in p)
-        # 상대 실책으로 출루 (땅볼·뜬공 실책, 송구실책 제외)
-        실책_플레이 = [p for p in plays if p.endswith("실") and "송구" not in p]
+        # 비히트 출루: 실책(실), R 출루(유땅R 등), 낫아웃 포함 / 송구실 제외
+        실책_플레이 = [p for p in plays if _is_reach_play(p)]
         실책출루 = len(실책_플레이)
         hr, tri, dbl = _parse_hit_details(plays)
         batters.append({
