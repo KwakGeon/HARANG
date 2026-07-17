@@ -196,6 +196,38 @@ def scrape_season(season):
     return all_games
 
 
+def fetch_pitcher_ranking(season):
+    """gameone.kr 투수 랭킹 페이지에서 시즌 스탯 직접 수집 (방어율 정확도 보장)"""
+    url = f"{BASE_URL}/club/info/ranking/pitcher?club_idx={CLUB_IDX}&season={season}"
+    html = get_page(url)
+    if not html:
+        return []
+    soup = BeautifulSoup(html, "html.parser")
+    tables = soup.find_all("table")
+    if not tables:
+        return []
+    pitchers = []
+    for row in tables[0].find_all("tr")[1:]:
+        cells = [td.get_text(strip=True) for td in row.find_all(["th", "td"])]
+        if len(cells) < 25 or not cells[1]:
+            continue
+        try:
+            era_raw = cells[2]
+            era = float(era_raw) if era_raw not in ("-", "", "∞") else 99.99
+            pitchers.append({
+                "name":   cells[1],
+                "경기":   int(cells[3])  if cells[3].isdigit()  else 0,
+                "이닝":   cells[12],
+                "삼진":   int(cells[20]) if cells[20].isdigit() else 0,
+                "실점":   int(cells[23]) if cells[23].isdigit() else 0,
+                "자책점": int(cells[24]) if cells[24].isdigit() else 0,
+                "방어율": era,
+            })
+        except Exception:
+            continue
+    return pitchers
+
+
 def main():
     import argparse
 

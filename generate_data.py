@@ -1,4 +1,4 @@
-from scraper import scrape_season
+from scraper import scrape_season, fetch_pitcher_ranking
 from boxscore import fetch_boxscore, generate_best_worst, extract_player_stats
 import json
 import re
@@ -173,6 +173,11 @@ def main():
         cur_season = max(season_ps.keys())
         total_cur  = sum(1 for g in unique if g.get("시즌") == cur_season and g.get("game_idx"))
         mvp_stats  = calc_season_mvp(season_ps[cur_season], total_cur, cur_season)
+
+        # 투수 방어율은 계산 대신 gameone.kr 랭킹 페이지 실제값 사용
+        pit_ranking = fetch_pitcher_ranking(cur_season)
+        if pit_ranking and mvp_stats:
+            mvp_stats["pitcher"] = pit_ranking
 
     data = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
