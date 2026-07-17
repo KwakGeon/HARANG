@@ -603,7 +603,8 @@ function initMVPPopovers() {
       </div>`;
 
     if (records.length) {
-      content += `<hr class="my-1"><div class="small fw-bold mb-1">비히트 출루 기록</div>`;
+      const totalReach = records.reduce((s, r) => s + (r['플레이'] || []).length, 0);
+      content += `<hr class="my-1"><div class="small fw-bold mb-1">비히트 출루 기록 <span class="text-secondary fw-normal">(${totalReach}건)</span></div>`;
       records.forEach(r => {
         const plays = (r['플레이'] || []).map(escHtml).join(' · ');
         content += `<div class="d-flex align-items-baseline gap-2 small mb-1">
