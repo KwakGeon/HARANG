@@ -400,7 +400,8 @@ def extract_player_stats(bs):
         사구 = sum(1 for p in plays if "몸맞" in p)
         삼진 = sum(1 for p in plays if "삼진" in p)
         # 상대 실책으로 출루 (땅볼·뜬공 실책, 송구실책 제외)
-        실책출루 = sum(1 for p in plays if p.endswith("실") and "송구" not in p)
+        실책_플레이 = [p for p in plays if p.endswith("실") and "송구" not in p]
+        실책출루 = len(실책_플레이)
         hr, tri, dbl = _parse_hit_details(plays)
         batters.append({
             "name": name,
@@ -413,6 +414,7 @@ def extract_player_stats(bs):
             "사구": 사구,
             "삼진": 삼진,
             "실책출루": 실책출루,
+            "실책_플레이": 실책_플레이,
             "홈런": hr,
             "삼루타": tri,
             "이루타": dbl,

@@ -52,12 +52,20 @@ def calc_season_mvp(season_ps_list, total_games, season):
             if short not in bat:
                 bat[short] = dict(경기=0, 타수=0, 안타=0, 타점=0, 득점=0,
                                   도루=0, 볼넷=0, 사구=0, 삼진=0,
-                                  실책출루=0, 홈런=0, 삼루타=0, 이루타=0)
+                                  실책출루=0, 홈런=0, 삼루타=0, 이루타=0,
+                                  실책_기록=[])
             d = bat[short]
             d["경기"] += 1
             for k in ["타수", "안타", "타점", "득점", "도루", "볼넷", "사구",
                       "삼진", "실책출루", "홈런", "삼루타", "이루타"]:
                 d[k] += b.get(k, 0)
+            실책_플레이 = b.get("실책_플레이", [])
+            if 실책_플레이:
+                d["실책_기록"].append({
+                    "날짜":   ps.get("날짜", ""),
+                    "상대팀": ps.get("상대팀", ""),
+                    "플레이": 실책_플레이,
+                })
 
         for p in ps.get("pitchers", []):
             nm    = p["name"]
@@ -93,12 +101,14 @@ def calc_season_mvp(season_ps_list, total_games, season):
         tb     = single + dbl*2 + tri*3 + hr*4
         slg    = round(tb / ab, 3)      if ab > 0 else 0.0
         batters.append({
-            "name":   bat_nm.get(short, short),
-            "경기":   d["경기"],
-            "출석률": round(d["경기"] / total_games * 100, 1),
-            "타수":   ab,
-            "타율":   round(h_adj / ab, 3) if ab > 0 else 0.0,
-            "타점":   d["타점"],
+            "name":    bat_nm.get(short, short),
+            "경기":    d["경기"],
+            "출석률":  round(d["경기"] / total_games * 100, 1),
+            "타수":    ab,
+            "정규타율": round(h / ab, 3) if ab > 0 else 0.0,
+            "타율":    round(h_adj / ab, 3) if ab > 0 else 0.0,
+            "실책_기록": d.get("실책_기록", []),
+            "타점":    d["타점"],
             "도루":   d["도루"],
             "삼진":   d["삼진"],
             "볼넷":   bb,
@@ -172,6 +182,8 @@ def main():
         # MVP 집계 (게임 JSON에는 저장 안 함)
         ps = extract_player_stats(bs)
         if ps["batters"] or ps["pitchers"]:
+            ps["날짜"]  = g.get("날짜", "")
+            ps["상대팀"] = g.get("상대팀", "")
             season = g.get("시즌", 0)
             season_ps.setdefault(season, []).append(ps)
 
