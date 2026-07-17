@@ -66,9 +66,9 @@ fetch('data/games.json')
     allGames = data.games;
     document.getElementById('updated').textContent = '마지막 업데이트: ' + data.generated_at;
     initFilters();
-    render();
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = '';
+    render();
   })
   .catch(() => {
     document.getElementById('loading').innerHTML =
