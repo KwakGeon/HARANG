@@ -38,7 +38,7 @@ def main():
         g["best"]  = best
         g["worst"] = worst
 
-        status = "✅" if best[0] != "상세 기록 미입력" else "⬜"
+        status = "[O]" if best[0] != "상세 기록 미입력" else "[ ]"
         print(f"  [{i+1:2d}/{len(unique)}] {status} {g['날짜']} vs {g['상대팀']}")
         time.sleep(0.5)
 
