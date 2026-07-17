@@ -33,10 +33,18 @@ _PLAY_END = frozenset("안뜬땅선플")
 
 
 def _is_reach_play(play):
-    """타자가 비히트 출루한 플레이 판별 (실책·R출루·낫아웃)"""
-    if not play or "송구" in play:
+    """타자가 비히트 출루한 플레이 판별 (실책·R출루·낫아웃)
+    쉼표로 구분된 각 토큰을 개별 타석/이벤트로 취급.
+    '유실,송구실책'처럼 같은 타석에 여러 기록이 붙어도 유실은 출루로 인정.
+    '송구' 제외는 전체 문자열이 아닌 토큰 단위로만 적용.
+    """
+    if not play:
         return False
-    return play.endswith("실") or play.endswith("R") or "낫아웃" in play
+    tokens = [t.strip() for t in play.split(',')]
+    return any(
+        "송구" not in t and (t.endswith("실") or t.endswith("R") or "낫아웃" in t)
+        for t in tokens
+    )
 
 
 def _is_play(text):
