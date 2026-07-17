@@ -8,6 +8,18 @@ from datetime import datetime
 SEASONS = [2024, 2025, 2026]
 
 
+def _parse_innings(s):
+    """'11.1' → 11.333, '18.2' → 18.667, '5' → 5.0  (아웃카운트 기반 표기 변환)"""
+    try:
+        s = str(s)
+        if '.' in s:
+            full, outs = s.split('.', 1)
+            return int(full) + int(outs) / 3
+        return float(s)
+    except Exception:
+        return 0.0
+
+
 def _short_name(name):
     """'곽건(32)' → '곽건'  (집계 키용)"""
     m = re.match(r'^([가-힣]{2,5})', name)
@@ -65,18 +77,18 @@ def calc_season_mvp(season_ps_list, total_games, season):
     # ── 타자 파생 지표 ──────────────────────────────────
     batters = []
     for short, d in bat.items():
-        ab = d["타수"]
-        if ab < 5:
+        ab  = d["타수"]
+        bb  = d["볼넷"]
+        hbp = d["사구"]
+        pa  = ab + bb + hbp
+        if pa < total_games * 1.5:   # 규정타석: 경기수 × 1.5
             continue
         h      = d["안타"]
         h_adj  = h + d["실책출루"]      # 실책 출루 포함 안타
-        bb     = d["볼넷"]
-        hbp    = d["사구"]
         hr     = d["홈런"]
         tri    = d["삼루타"]
         dbl    = d["이루타"]
         single = max(0, h - dbl - tri - hr)
-        pa     = ab + bb + hbp
         obp    = round((h + bb + hbp) / pa, 3) if pa > 0 else 0.0
         tb     = single + dbl*2 + tri*3 + hr*4
         slg    = round(tb / ab, 3)      if ab > 0 else 0.0
@@ -174,10 +186,12 @@ def main():
         total_cur  = sum(1 for g in unique if g.get("시즌") == cur_season and g.get("game_idx"))
         mvp_stats  = calc_season_mvp(season_ps[cur_season], total_cur, cur_season)
 
-        # 투수 방어율은 계산 대신 gameone.kr 랭킹 페이지 실제값 사용
+        # 투수는 gameone.kr 랭킹 페이지 실제값 사용 + 규정이닝(경기수×1) 필터
         pit_ranking = fetch_pitcher_ranking(cur_season)
         if pit_ranking and mvp_stats:
-            mvp_stats["pitcher"] = pit_ranking
+            qualified = [p for p in pit_ranking
+                         if _parse_innings(p["이닝"]) >= total_cur]
+            mvp_stats["pitcher"] = qualified
 
     data = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),

@@ -474,59 +474,81 @@ function renderMVP() {
 
   const { season, total_games, batter, pitcher } = mvpData;
   const medals = ['🥇', '🥈', '🥉'];
+  const 규정이닝 = total_games;
+  const 규정타석 = Math.ceil(total_games * 1.5);
 
-  function topN(arr, key, asc, n) {
-    n = n || 3;
-    const sorted = [...arr].sort((a, b) => asc ? a[key] - b[key] : b[key] - a[key]);
-    return sorted.slice(0, n);
+  function sortAll(arr, key, asc) {
+    return [...arr].sort((a, b) => asc ? a[key] - b[key] : b[key] - a[key]);
   }
 
-  function awardCard(title, players, key, unit, note) {
+  // extraFn: (player) => 부가정보 문자열, 생략 시 '경기수경기'
+  function awardCard(title, sorted, key, unit, note, extraFn) {
     unit = unit || '';
     const headerNote = note ? ` <small class="opacity-75 fw-normal">${note}</small>` : '';
-    if (!players.length) {
+    if (!sorted.length) {
       return `<div class="col-md-6 col-xl-4">
         <div class="card border-0 shadow-sm h-100">
           <div class="card-header bg-secondary text-white fw-bold py-2">${title}${headerNote}</div>
-          <div class="card-body text-muted small py-2">데이터 없음</div>
+          <div class="card-body text-muted small py-2">규정 미달 선수 없음</div>
         </div></div>`;
     }
-    const rows = players.map((p, i) => `
-      <div class="d-flex align-items-center py-2 ${i < players.length - 1 ? 'border-bottom' : ''}">
-        <span style="font-size:1.4rem;width:2.2rem;flex-shrink:0">${medals[i]}</span>
-        <div class="flex-grow-1 fw-bold">${escHtml(p.name)}</div>
+
+    function renderRow(p, rank, medal) {
+      const lbl = medal
+        ? `<span style="font-size:1.4rem;width:2.2rem;flex-shrink:0">${medal}</span>`
+        : `<span class="text-muted" style="width:2.2rem;flex-shrink:0;font-size:.82rem;text-align:right;display:inline-block">${rank}위</span>`;
+      const sub = extraFn ? extraFn(p) : `${p['경기']}경기`;
+      return `<div class="d-flex align-items-center py-2 border-bottom">
+        ${lbl}
+        <div class="flex-grow-1 fw-bold ms-1">${escHtml(p.name)}</div>
         <div class="text-end">
-          <span class="badge bg-primary fs-6 rounded-pill">${p[key]}${unit}</span>
-          <div class="text-muted" style="font-size:.72rem">${p['경기']}경기</div>
+          <span class="badge bg-primary rounded-pill">${p[key]}${unit}</span>
+          <div class="text-muted" style="font-size:.72rem">${sub}</div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }
+
+    const top3 = sorted.slice(0, 3);
+    const rest = sorted.slice(3);
+    const top3Html = top3.map((p, i) => renderRow(p, i + 1, medals[i])).join('');
+    const restHtml = rest.length
+      ? `<details><summary style="cursor:pointer;list-style:none;outline:none"
+             class="text-muted small py-2 ps-1">▼ ${rest.length}명 더 보기</summary>
+           <div>${rest.map((p, i) => renderRow(p, i + 4, null)).join('')}</div>
+         </details>`
+      : '';
+
     return `<div class="col-md-6 col-xl-4">
       <div class="card border-0 shadow-sm h-100">
         <div class="card-header bg-dark text-white fw-bold py-2">${title}${headerNote}</div>
-        <div class="card-body py-2">${rows}</div>
+        <div class="card-body py-2">${top3Html}${restHtml}</div>
       </div></div>`;
   }
 
-  const pitERA = topN(pitcher, '방어율', true);
-  const pitK   = topN(pitcher, '삼진',   false);
+  const pitExtra = p => `${p['이닝']}이닝 · ${p['경기']}경기`;
 
-  const batAVG = topN(batter, '타율',   false);
-  const batRBI = topN(batter, '타점',   false);
-  const batOPS = topN(batter, 'OPS',    false);
-  const batSB  = topN(batter, '도루',   false);
-  const batSO  = topN(batter, '삼진',   true);   // 적을수록 Good
-  const batATT = topN(batter, '출석률', false);
+  const pitERA = sortAll(pitcher, '방어율', true);
+  const pitK   = sortAll(pitcher, '삼진',   false);
+  const batAVG = sortAll(batter,  '타율',   false);
+  const batRBI = sortAll(batter,  '타점',   false);
+  const batOPS = sortAll(batter,  'OPS',    false);
+  const batSB  = sortAll(batter,  '도루',   false);
+  const batSO  = sortAll(batter,  '삼진',   true);
+  const batATT = sortAll(batter,  '출석률', false);
 
   el.innerHTML = `
     <div class="alert alert-info d-flex align-items-center gap-2 mb-3 mt-1">
       <span style="font-size:1.3rem">🏆</span>
-      <div><strong>${season}시즌 MVP 통계</strong> &mdash; 총 ${total_games}경기 기준 &nbsp;|&nbsp; 타자 최소 5타수 이상</div>
+      <div>
+        <strong>${season}시즌 MVP 통계</strong> &mdash; 총 ${total_games}경기 기준<br>
+        <small>투수 규정이닝 ${규정이닝}이닝 이상 &nbsp;·&nbsp; 타자 규정타석 ${규정타석}타석 이상</small>
+      </div>
     </div>
 
     <h5 class="fw-bold text-secondary mb-2">⚾ 투수 부문</h5>
     <div class="row g-3 mb-4">
-      ${awardCard('방어율 (ERA)', pitERA, '방어율', '', '낮을수록 Good')}
-      ${awardCard('탈삼진', pitK, '삼진', '개')}
+      ${awardCard('방어율 (ERA)', pitERA, '방어율', '', '낮을수록 Good', pitExtra)}
+      ${awardCard('탈삼진', pitK, '삼진', '개', null, pitExtra)}
     </div>
 
     <h5 class="fw-bold text-secondary mb-2">🏏 타자 부문</h5>
