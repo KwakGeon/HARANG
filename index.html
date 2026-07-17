@@ -18,6 +18,8 @@
     .badge-draw { background: #ffc107; color: #333; }
     .result-badge { padding: 3px 10px; border-radius: 20px; font-size: .8rem; font-weight: 600; }
     #loading { text-align: center; padding: 60px; color: #888; }
+    th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+    th[data-sort]:hover { background: #293e56 !important; }
   </style>
 </head>
 <body>
@@ -58,6 +60,7 @@
 <script>
 let allGames = [];
 let charts = {};
+let histSort = { col: '날짜', dir: -1 };  // 기본: 날짜 내림차순
 
 /* ── 데이터 로드 ── */
 fetch('games_data.json')
@@ -91,6 +94,10 @@ function initFilters() {
   const ss = document.getElementById('filterSeason');
   ss.innerHTML = '<option value="all">전체 시즌</option>' +
     seasons.map(s => `<option value="${s}">${s}시즌</option>`).join('');
+
+  // 현재 년도를 기본값으로 설정
+  const curYear = new Date().getFullYear();
+  if (seasons.includes(curYear)) ss.value = String(curYear);
 
   const sl = document.getElementById('filterLeague');
   sl.innerHTML = '<option value="all">전체 리그</option>' +
@@ -239,76 +246,158 @@ function renderSummary(games) {
 }
 
 /* ── 경기 히스토리 탭 ── */
+
+// 날짜 정렬용 숫자 키 (시즌*10000 + 월*100 + 일)
+function _dateKey(g) {
+  const m = g['날짜'].match(/(\d+)월(\d+)일/);
+  return m ? g['시즌'] * 10000 + parseInt(m[1]) * 100 + parseInt(m[2]) : 0;
+}
+
+// 결과 정렬 순서 (승 > 무 > 패)
+function _resultRank(r) {
+  return r.includes('승') ? 2 : r.includes('무') ? 1 : 0;
+}
+
+// 히스토리 테이블 컬럼 정의
+const _HIST_COLS = [
+  { key: '날짜',   label: '날짜',   cls: '' },
+  { key: '시즌',   label: '시즌',   cls: 'text-center' },
+  { key: '상대팀', label: '상대팀', cls: '' },
+  { key: '점수',   label: '점수',   cls: 'text-center' },
+  { key: '득실차', label: '득실차', cls: 'text-center' },
+  { key: '결과',   label: '결과',   cls: 'text-center' },
+  { key: null,     label: '리그',   cls: '' },
+  { key: null,     label: '구장',   cls: '' },
+  { key: null,     label: '',       cls: '' },
+];
+
+function _histSortBy(col) {
+  if (histSort.col === col) histSort.dir *= -1;
+  else { histSort.col = col; histSort.dir = -1; }
+  _renderHistHead();
+  _renderHistBody(getFiltered(), document.getElementById('oppFilter')?.value || 'all');
+}
+
+function _renderHistHead() {
+  const thead = document.getElementById('histHead');
+  if (!thead) return;
+  thead.innerHTML = '<tr>' + _HIST_COLS.map(c => {
+    if (!c.key) return `<th class="${c.cls}">${c.label}</th>`;
+    const active = histSort.col === c.key;
+    const icon = active ? (histSort.dir === 1 ? ' ↑' : ' ↓') : ' <span style="opacity:.25">↕</span>';
+    return `<th class="${c.cls}" data-sort="${c.key}">${c.label}${icon}</th>`;
+  }).join('') + '</tr>';
+  // 헤더 클릭 이벤트 (innerHTML 교체 후 재등록)
+  thead.querySelectorAll('th[data-sort]').forEach(th =>
+    th.addEventListener('click', () => _histSortBy(th.dataset.sort))
+  );
+}
+
+function _renderHistBody(games, opp) {
+  const tbody = document.getElementById('histBody');
+  if (!tbody) return;
+
+  let rows = opp === 'all' ? [...games] : games.filter(g => g['상대팀'] === opp);
+  const col = histSort.col, dir = histSort.dir;
+
+  rows.sort((a, b) => {
+    let va, vb;
+    if      (col === '날짜')   { va = _dateKey(a);                          vb = _dateKey(b); }
+    else if (col === '시즌')   { va = a['시즌'];                             vb = b['시즌']; }
+    else if (col === '상대팀') { va = a['상대팀'];                           vb = b['상대팀']; }
+    else if (col === '점수')   { va = a['우리팀_점수'] || 0;                 vb = b['우리팀_점수'] || 0; }
+    else if (col === '득실차') { va = (a['우리팀_점수']||0)-(a['상대팀_점수']||0); vb = (b['우리팀_점수']||0)-(b['상대팀_점수']||0); }
+    else if (col === '결과')   { va = _resultRank(a['결과']);                vb = _resultRank(b['결과']); }
+    else                       { va = _dateKey(a);                          vb = _dateKey(b); }
+    if (typeof va === 'string') return va.localeCompare(vb, 'ko') * dir;
+    return (va - vb) * dir;
+  });
+
+  const cnt = document.getElementById('historyCount');
+  if (cnt) cnt.textContent = `(${rows.length}경기)`;
+
+  tbody.innerHTML = rows.map((g, idx) => {
+    const r     = g['결과'];
+    const bcls  = r.includes('승') ? 'badge-win' : r.includes('패') ? 'badge-lose' : 'badge-draw';
+    const diff  = (g['우리팀_점수'] || 0) - (g['상대팀_점수'] || 0);
+    const diffCls = diff > 0 ? 'text-success fw-bold' : diff < 0 ? 'text-danger fw-bold' : 'text-muted';
+    const diffStr = diff > 0 ? `+${diff}` : String(diff);
+    const best  = (g['best']  || []).filter(s => s !== '상세 기록 미입력');
+    const worst = (g['worst'] || []).filter(s => s !== '상세 기록 미입력');
+    const hasReview = best.length > 0 || worst.length > 0;
+    const rid = `rev_${idx}`;
+
+    const bestHtml  = best.map(s  => `<li>✅ ${escHtml(s)}</li>`).join('');
+    const worstHtml = worst.map(s => `<li>⚠️ ${escHtml(s)}</li>`).join('');
+
+    const reviewBtn = hasReview
+      ? `<button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="
+           const el=document.getElementById('${rid}');
+           const v=el.style.display!=='none';
+           el.style.display=v?'none':'';
+           this.textContent=v?'📋 리뷰 보기':'닫기';">📋 리뷰 보기</button>`
+      : '';
+
+    const reviewRow = hasReview ? `
+      <tr id="${rid}" style="display:none">
+        <td colspan="${_HIST_COLS.length}" class="p-0">
+          <div class="px-3 py-2" style="background:#f8f9fa">
+            <div class="row g-2">
+              ${bestHtml ? `<div class="col-md-6"><div class="p-2 rounded" style="background:#f0fff4">
+                <div class="fw-bold text-success mb-1 small">👍 잘한 점</div>
+                <ul class="mb-0 ps-3 small">${bestHtml}</ul>
+              </div></div>` : ''}
+              ${worstHtml ? `<div class="col-md-6"><div class="p-2 rounded" style="background:#fff5f5">
+                <div class="fw-bold text-danger mb-1 small">👎 아쉬운 점</div>
+                <ul class="mb-0 ps-3 small">${worstHtml}</ul>
+              </div></div>` : ''}
+            </div>
+          </div>
+        </td>
+      </tr>` : '';
+
+    return `
+      <tr>
+        <td class="small text-nowrap">${escHtml(g['날짜'])}</td>
+        <td class="text-center small">${g['시즌']}</td>
+        <td class="fw-bold">${escHtml(g['상대팀'])}</td>
+        <td class="text-center fw-bold">${g['우리팀_점수']} - ${g['상대팀_점수']}</td>
+        <td class="text-center ${diffCls}">${diffStr}</td>
+        <td class="text-center"><span class="result-badge ${bcls}">${escHtml(r)}</span></td>
+        <td class="small">${escHtml(g['리그'] || '')}</td>
+        <td class="small text-muted">${escHtml(g['구장'] || '')}</td>
+        <td class="text-end">${reviewBtn}</td>
+      </tr>${reviewRow}`;
+  }).join('');
+}
+
 function renderHistory(games) {
   const opponents = [...new Set(games.map(g => g['상대팀']))].sort();
-  const sorted = [...games].sort((a, b) => b['날짜'].localeCompare(a['날짜']));
 
   document.getElementById('tabHistory').innerHTML = `
-    <div class="d-flex align-items-center gap-2 mb-3">
-      <label class="fw-bold text-nowrap">상대팀 선택</label>
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+      <label class="fw-bold text-nowrap">상대팀</label>
       <select id="oppFilter" class="form-select form-select-sm" style="width:auto; min-width:150px">
         <option value="all">전체</option>
         ${opponents.map(o => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join('')}
       </select>
       <span id="historyCount" class="text-muted small"></span>
     </div>
-    <div id="historyTable"></div>`;
+    <div class="card border-0 shadow-sm">
+      <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle mb-0">
+          <thead class="table-dark" id="histHead"></thead>
+          <tbody id="histBody"></tbody>
+        </table>
+      </div>
+    </div>`;
 
-  function drawTable(opp) {
-    const rows = opp === 'all' ? sorted : sorted.filter(g => g['상대팀'] === opp);
-    document.getElementById('historyCount').textContent = `(${rows.length}경기)`;
-    document.getElementById('historyTable').innerHTML = rows.map((g, idx) => {
-      const r    = g['결과'];
-      const bcls = r.includes('승') ? 'badge-win' : r.includes('패') ? 'badge-lose' : 'badge-draw';
-      const best  = (g['best']  || []).filter(s => s !== '상세 기록 미입력');
-      const worst = (g['worst'] || []).filter(s => s !== '상세 기록 미입력');
-      const hasReview = best.length > 0 || worst.length > 0;
-      const rid = `review_${idx}`;
+  _renderHistHead();
+  _renderHistBody(games, 'all');
 
-      const bestHtml  = best.map(s  => `<li>✅ ${escHtml(s)}</li>`).join('');
-      const worstHtml = worst.map(s => `<li>⚠️ ${escHtml(s)}</li>`).join('');
-
-      return `
-        <div class="card border-0 shadow-sm mb-2">
-          <div class="card-body py-2 px-3">
-            <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
-              <div class="d-flex align-items-center gap-3 flex-wrap">
-                <span class="text-muted small text-nowrap">${escHtml(g['날짜'])} · ${g['시즌']}</span>
-                <span class="fw-bold">vs ${escHtml(g['상대팀'])}</span>
-                <span class="fw-bold">${g['우리팀_점수']} - ${g['상대팀_점수']}</span>
-                <span class="result-badge ${bcls}">${escHtml(r)}</span>
-                <span class="text-muted small">${escHtml(g['리그'] || '')} · ${escHtml(g['구장'] || '')}</span>
-              </div>
-              ${hasReview ? `<button class="btn btn-sm btn-outline-secondary py-0"
-                onclick="const el=document.getElementById('${rid}');
-                         el.style.display=el.style.display==='none'?'':'none';
-                         this.textContent=el.style.display===''?'리뷰 닫기':'📋 리뷰 보기'">
-                📋 리뷰 보기</button>` : ''}
-            </div>
-            ${hasReview ? `
-            <div id="${rid}" style="display:none" class="mt-2 pt-2 border-top">
-              <div class="row g-2">
-                ${bestHtml ? `<div class="col-md-6">
-                  <div class="p-2 rounded" style="background:#f0fff4">
-                    <div class="fw-bold text-success mb-1">👍 잘한 점</div>
-                    <ul class="mb-0 ps-3 small">${bestHtml}</ul>
-                  </div>
-                </div>` : ''}
-                ${worstHtml ? `<div class="col-md-6">
-                  <div class="p-2 rounded" style="background:#fff5f5">
-                    <div class="fw-bold text-danger mb-1">👎 아쉬운 점</div>
-                    <ul class="mb-0 ps-3 small">${worstHtml}</ul>
-                  </div>
-                </div>` : ''}
-              </div>
-            </div>` : ''}
-          </div>
-        </div>`;
-    }).join('');
-  }
-
-  drawTable('all');
-  document.getElementById('oppFilter').addEventListener('change', e => drawTable(e.target.value));
+  document.getElementById('oppFilter').addEventListener('change', e =>
+    _renderHistBody(getFiltered(), e.target.value)
+  );
 }
 
 /* ── 차트 분석 탭 ── */
