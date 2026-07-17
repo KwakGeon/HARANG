@@ -362,3 +362,76 @@ def generate_best_worst(game, bs):
         worst.append(f"상대에게 {game.get('상대팀_점수',0)}점 허용")
 
     return best, worst
+
+
+# ── MVP 지표 추출 ─────────────────────────────────────────────
+
+def _parse_hit_details(plays):
+    """플레이 목록에서 홈런·3루타·2루타 개수 반환"""
+    hr = tri = dbl = 0
+    for p in plays:
+        if "홈런" in p:
+            hr += 1
+        elif any(x in p for x in ["월3", "중3", "우중3", "좌중3"]):
+            tri += 1
+        elif any(x in p for x in ["월2", "중2", "우중2", "좌중2"]):
+            dbl += 1
+    return hr, tri, dbl
+
+
+def extract_player_stats(bs):
+    """박스스코어에서 선수별 세부 지표를 추출 (MVP 집계용)"""
+    if not bs or not bs.get("our_batters"):
+        return {"batters": [], "pitchers": [], "game_innings": 0}
+
+    game_innings = len(inning_scores_clean(bs.get("our_innings", [])))
+    if game_innings == 0:
+        game_innings = len(inning_scores_clean(bs.get("opp_innings", [])))
+
+    batters = []
+    for b in bs["our_batters"]:
+        name = b.get("name", "")
+        if not name or len(name) < 2:
+            continue
+        if b["타수"] == 0 and b["안타"] == 0:
+            continue
+        plays = b.get("plays", [])
+        볼넷 = sum(1 for p in plays if "4구" in p)
+        사구 = sum(1 for p in plays if "몸맞" in p)
+        삼진 = sum(1 for p in plays if "삼진" in p)
+        # 상대 실책으로 출루 (땅볼·뜬공 실책, 송구실책 제외)
+        실책출루 = sum(1 for p in plays if p.endswith("실") and "송구" not in p)
+        hr, tri, dbl = _parse_hit_details(plays)
+        batters.append({
+            "name": name,
+            "타수": b["타수"],
+            "안타": b["안타"],
+            "타점": b["타점"],
+            "득점": b["득점"],
+            "도루": b["도루"],
+            "볼넷": 볼넷,
+            "사구": 사구,
+            "삼진": 삼진,
+            "실책출루": 실책출루,
+            "홈런": hr,
+            "삼루타": tri,
+            "이루타": dbl,
+        })
+
+    pitchers = []
+    for p in bs.get("our_pitchers", []):
+        name = p.get("name", "")
+        if not name or len(name) < 2:
+            continue
+        pitchers.append({
+            "name": name,
+            "삼진": p.get("삼진", 0),
+            "자책점": p.get("자책점", 0),
+            "실점": p.get("실점", 0),
+        })
+
+    return {
+        "batters": batters,
+        "pitchers": pitchers,
+        "game_innings": game_innings,
+    }

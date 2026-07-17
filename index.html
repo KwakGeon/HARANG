@@ -48,17 +48,20 @@
       <li class="nav-item"><button class="nav-link active" data-tab="summary">📊 상대전적 요약</button></li>
       <li class="nav-item"><button class="nav-link" data-tab="history">📋 경기 히스토리</button></li>
       <li class="nav-item"><button class="nav-link" data-tab="charts">📈 차트 분석</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="mvp">🏆 MVP</button></li>
     </ul>
 
     <div id="tabSummary"></div>
     <div id="tabHistory" style="display:none"></div>
     <div id="tabCharts"  style="display:none"></div>
+    <div id="tabMvp"     style="display:none"></div>
 
   </div>
 </div>
 
 <script>
 let allGames = [];
+let mvpData  = null;
 let charts = {};
 let histSort = { col: '날짜', dir: -1 };  // 기본: 날짜 내림차순
 
@@ -70,12 +73,14 @@ fetch('games_data.json')
   })
   .then(data => {
     allGames = data.games;
+    mvpData  = data.mvp_stats || null;
     document.getElementById('updated').textContent = '마지막 업데이트: ' + data.generated_at;
     try {
       initFilters();
       document.getElementById('loading').style.display = 'none';
       document.getElementById('app').style.display = '';
       render();
+      renderMVP();
     } catch(e) {
       document.getElementById('loading').innerHTML =
         '<div class="alert alert-warning"><b>렌더링 오류:</b> ' + e.message + '<br><pre>' + e.stack + '</pre></div>';
@@ -451,11 +456,89 @@ document.addEventListener('click', e => {
   if (!btn) return;
   document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  ['summary','history','charts'].forEach(t => {
+  ['summary','history','charts','mvp'].forEach(t => {
     const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     el.style.display = t === btn.dataset.tab ? '' : 'none';
   });
 });
+
+/* ── MVP 탭 ── */
+function renderMVP() {
+  const el = document.getElementById('tabMvp');
+  if (!el) return;
+
+  if (!mvpData) {
+    el.innerHTML = '<div class="alert alert-secondary mt-2">MVP 통계 데이터가 없습니다.</div>';
+    return;
+  }
+
+  const { season, total_games, batter, pitcher } = mvpData;
+  const medals = ['🥇', '🥈', '🥉'];
+
+  function topN(arr, key, asc, n) {
+    n = n || 3;
+    const sorted = [...arr].sort((a, b) => asc ? a[key] - b[key] : b[key] - a[key]);
+    return sorted.slice(0, n);
+  }
+
+  function awardCard(title, players, key, unit, note) {
+    unit = unit || '';
+    const headerNote = note ? ` <small class="opacity-75 fw-normal">${note}</small>` : '';
+    if (!players.length) {
+      return `<div class="col-md-6 col-xl-4">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header bg-secondary text-white fw-bold py-2">${title}${headerNote}</div>
+          <div class="card-body text-muted small py-2">데이터 없음</div>
+        </div></div>`;
+    }
+    const rows = players.map((p, i) => `
+      <div class="d-flex align-items-center py-2 ${i < players.length - 1 ? 'border-bottom' : ''}">
+        <span style="font-size:1.4rem;width:2.2rem;flex-shrink:0">${medals[i]}</span>
+        <div class="flex-grow-1 fw-bold">${escHtml(p.name)}</div>
+        <div class="text-end">
+          <span class="badge bg-primary fs-6 rounded-pill">${p[key]}${unit}</span>
+          <div class="text-muted" style="font-size:.72rem">${p['경기']}경기</div>
+        </div>
+      </div>`).join('');
+    return `<div class="col-md-6 col-xl-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-dark text-white fw-bold py-2">${title}${headerNote}</div>
+        <div class="card-body py-2">${rows}</div>
+      </div></div>`;
+  }
+
+  const pitERA = topN(pitcher, '방어율', true);
+  const pitK   = topN(pitcher, '삼진',   false);
+
+  const batAVG = topN(batter, '타율',   false);
+  const batRBI = topN(batter, '타점',   false);
+  const batOPS = topN(batter, 'OPS',    false);
+  const batSB  = topN(batter, '도루',   false);
+  const batSO  = topN(batter, '삼진',   true);   // 적을수록 Good
+  const batATT = topN(batter, '출석률', false);
+
+  el.innerHTML = `
+    <div class="alert alert-info d-flex align-items-center gap-2 mb-3 mt-1">
+      <span style="font-size:1.3rem">🏆</span>
+      <div><strong>${season}시즌 MVP 통계</strong> &mdash; 총 ${total_games}경기 기준 &nbsp;|&nbsp; 타자 최소 5타수 이상</div>
+    </div>
+
+    <h5 class="fw-bold text-secondary mb-2">⚾ 투수 부문</h5>
+    <div class="row g-3 mb-4">
+      ${awardCard('방어율 (ERA)', pitERA, '방어율', '', '낮을수록 Good')}
+      ${awardCard('탈삼진', pitK, '삼진', '개')}
+    </div>
+
+    <h5 class="fw-bold text-secondary mb-2">🏏 타자 부문</h5>
+    <div class="row g-3">
+      ${awardCard('타율', batAVG, '타율', '', '실책출루 포함')}
+      ${awardCard('타점', batRBI, '타점', '점')}
+      ${awardCard('OPS', batOPS, 'OPS')}
+      ${awardCard('도루', batSB, '도루', '개')}
+      ${awardCard('최소 삼진', batSO, '삼진', '개', '낮을수록 Good')}
+      ${awardCard('출석왕', batATT, '출석률', '%')}
+    </div>`;
+}
 
 /* ── XSS 방지 ── */
 function escHtml(s) {
