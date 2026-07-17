@@ -60,19 +60,27 @@ let allGames = [];
 let charts = {};
 
 /* ── 데이터 로드 ── */
-fetch('data/games.json')
-  .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+fetch('games_data.json')
+  .then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + r.statusText);
+    return r.json();
+  })
   .then(data => {
     allGames = data.games;
     document.getElementById('updated').textContent = '마지막 업데이트: ' + data.generated_at;
-    initFilters();
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('app').style.display = '';
-    render();
+    try {
+      initFilters();
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('app').style.display = '';
+      render();
+    } catch(e) {
+      document.getElementById('loading').innerHTML =
+        '<div class="alert alert-warning"><b>렌더링 오류:</b> ' + e.message + '<br><pre>' + e.stack + '</pre></div>';
+    }
   })
-  .catch(() => {
+  .catch((err) => {
     document.getElementById('loading').innerHTML =
-      '<div class="alert alert-danger">데이터를 불러올 수 없습니다.</div>';
+      '<div class="alert alert-danger"><b>Fetch 오류:</b> ' + (err && err.message ? err.message : String(err)) + '</div>';
   });
 
 /* ── 필터 초기화 ── */

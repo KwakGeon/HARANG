@@ -25,7 +25,7 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'chore: auto-update game data'
-          file_pattern: 'data/games.json'
+          file_pattern: 'games_data.json'
 
       - name: Trigger Netlify deploy
         run: curl -X POST https://api.netlify.com/build_hooks/6a599c25b96324471c432eef

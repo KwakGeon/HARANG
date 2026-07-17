@@ -30,11 +30,10 @@ def main():
         "games": unique,
     }
 
-    os.makedirs("data", exist_ok=True)
-    with open("data/games.json", "w", encoding="utf-8") as f:
+    with open("games_data.json", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-    print(f"완료: {len(unique)}경기 → data/games.json")
+    print(f"완료: {len(unique)}경기 → games_data.json")
 
 
 if __name__ == "__main__":
