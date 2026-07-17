@@ -523,20 +523,12 @@ function renderMVP() {
       </div>`;
     }
 
-    const top3 = sorted.slice(0, 3);
-    const rest = sorted.slice(3);
-    const top3Html = top3.map((p, i) => renderRow(p, i + 1, medals[i])).join('');
-    const restHtml = rest.length
-      ? `<details><summary style="cursor:pointer;list-style:none;outline:none"
-             class="text-muted small py-2 ps-1">▼ ${rest.length}명 더 보기</summary>
-           <div>${rest.map((p, i) => renderRow(p, i + 4, null)).join('')}</div>
-         </details>`
-      : '';
+    const allHtml = sorted.map((p, i) => renderRow(p, i + 1, medals[i] ?? null)).join('');
 
     return `<div class="col-md-6 col-xl-4">
       <div class="card border-0 shadow-sm h-100">
         <div class="card-header bg-dark text-white fw-bold py-2">${title}${headerNote}</div>
-        <div class="card-body py-2">${top3Html}${restHtml}</div>
+        <div class="card-body py-2">${allHtml}</div>
       </div></div>`;
   }
 
