@@ -196,6 +196,56 @@ def scrape_season(season):
     return all_games
 
 
+def fetch_hitter_ranking(season):
+    """gameone.kr 타자 랭킹 페이지에서 시즌 스탯 직접 수집 (공식 집계값)"""
+    url = f"{BASE_URL}/club/info/ranking/hitter?club_idx={CLUB_IDX}&season={season}"
+    html = get_page(url)
+    if not html:
+        return []
+    soup = BeautifulSoup(html, "html.parser")
+    tables = soup.find_all("table")
+    if not tables:
+        return []
+
+    def si(s):
+        try: return int(s)
+        except: return 0
+
+    def sf(s):
+        try: return float(s)
+        except: return 0.0
+
+    batters = []
+    for row in tables[0].find_all("tr")[1:]:
+        cells = [td.get_text(strip=True) for td in row.find_all(["th", "td"])]
+        if len(cells) < 28 or not cells[1]:
+            continue
+        try:
+            batters.append({
+                "name":     cells[1],
+                "경기":     si(cells[3]),
+                "타석":     si(cells[4]),
+                "타수":     si(cells[5]),
+                "득점":     si(cells[6]),
+                "안타":     si(cells[7]),
+                "이루타":   si(cells[9]),
+                "삼루타":   si(cells[10]),
+                "홈런":     si(cells[11]),
+                "타점":     si(cells[13]),
+                "도루":     si(cells[14]),
+                "볼넷":     si(cells[18]),
+                "사구":     si(cells[20]),
+                "삼진":     si(cells[21]),
+                "정규타율": sf(cells[2]),
+                "OBP":      sf(cells[24]),
+                "SLG":      sf(cells[23]),
+                "OPS":      sf(cells[27]),
+            })
+        except Exception:
+            continue
+    return batters
+
+
 def fetch_pitcher_ranking(season):
     """gameone.kr 투수 랭킹 페이지에서 시즌 스탯 직접 수집 (방어율 정확도 보장)"""
     url = f"{BASE_URL}/club/info/ranking/pitcher?club_idx={CLUB_IDX}&season={season}"

@@ -1,4 +1,4 @@
-from scraper import scrape_season, fetch_pitcher_ranking
+from scraper import scrape_season, fetch_pitcher_ranking, fetch_hitter_ranking
 from boxscore import fetch_boxscore, generate_best_worst, extract_player_stats
 import json
 import re
@@ -89,7 +89,7 @@ def calc_season_mvp(season_ps_list, total_games, season):
         bb  = d["볼넷"]
         hbp = d["사구"]
         pa  = ab + bb + hbp
-        if pa < total_games * 1.5:   # 규정타석: 경기수 × 1.5
+        if pa == 0:
             continue
         h      = d["안타"]
         h_adj  = h + d["실책출루"]      # 실책 출루 포함 안타
@@ -198,12 +198,57 @@ def main():
         total_cur  = sum(1 for g in unique if g.get("시즌") == cur_season and g.get("game_idx"))
         mvp_stats  = calc_season_mvp(season_ps[cur_season], total_cur, cur_season)
 
-        # 투수는 gameone.kr 랭킹 페이지 실제값 사용 + 규정이닝(경기수×1) 필터
+        # 투수: gameone.kr 랭킹 페이지 실제값 + 규정이닝(경기수×1) 필터
         pit_ranking = fetch_pitcher_ranking(cur_season)
         if pit_ranking and mvp_stats:
             qualified = [p for p in pit_ranking
                          if _parse_innings(p["이닝"]) >= total_cur]
             mvp_stats["pitcher"] = qualified
+
+        # 타자: gameone.kr 랭킹 페이지 공식 집계 사용
+        # 실책_기록(툴팁용)만 박스스코어에서 병합
+        hit_ranking = fetch_hitter_ranking(cur_season)
+        if hit_ranking and mvp_stats:
+            # 박스스코어에서 실책_기록 수집 (short_name 키)
+            reach_map = {}
+            for ps in season_ps.get(cur_season, []):
+                for b in ps.get("batters", []):
+                    실책_플레이 = b.get("실책_플레이", [])
+                    if 실책_플레이:
+                        short = _short_name(b["name"])
+                        reach_map.setdefault(short, []).append({
+                            "날짜":   ps.get("날짜", ""),
+                            "상대팀": ps.get("상대팀", ""),
+                            "플레이": 실책_플레이,
+                        })
+
+            batters = []
+            for b in hit_ranking:
+                short   = _short_name(b["name"])
+                records = reach_map.get(short, [])
+                실책출루  = sum(len(r["플레이"]) for r in records)
+                ab      = b["타수"]
+                h       = b["안타"]
+                타율     = round((h + 실책출루) / ab, 3) if ab > 0 else 0.0
+                batters.append({
+                    "name":     b["name"],
+                    "경기":     b["경기"],
+                    "출석률":   round(b["경기"] / total_cur * 100, 1),
+                    "타수":     ab,
+                    "정규타율": b["정규타율"],
+                    "타율":     타율,
+                    "실책_기록": records,
+                    "타점":     b["타점"],
+                    "도루":     b["도루"],
+                    "삼진":     b["삼진"],
+                    "볼넷":     b["볼넷"],
+                    "홈런":     b["홈런"],
+                    "득점":     b["득점"],
+                    "OBP":      b["OBP"],
+                    "SLG":      b["SLG"],
+                    "OPS":      b["OPS"],
+                })
+            mvp_stats["batter"] = batters
 
     data = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
