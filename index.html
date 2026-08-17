@@ -359,17 +359,19 @@ const _HIST_COLS = [
   { key: '상대팀', label: '상대팀', cls: '' },
   { key: '점수',   label: '점수',   cls: 'text-center' },
   { key: '득실차', label: '득실차', cls: 'text-center',  mobHide: true },
-  { key: '결과',   label: '결과',   cls: 'text-center' },
-  { key: null,     label: '리그',   cls: '',             mobHide: true },
-  { key: null,     label: '구장',   cls: '',             mobHide: true },
-  { key: null,     label: '',       cls: '' },
+  { key: '결과',   label: '결과',   cls: 'text-center text-nowrap' },
+  { key: null,     label: '리그',   cls: '',                         mobHide: true },
+  { key: null,     label: '구장',   cls: '',                         mobHide: true },
+  { key: null,     label: '',       cls: 'text-nowrap' },
 ];
 
-// "8월11일(토)" → "08.11(토)"
+// "8월11일(토) 10:00" → "08.11(토)<br>10:00" (2줄 HTML)
 function _fmtDateMobile(s) {
-  const m = s && s.match(/(\d+)월(\d+)일(.*)/);
-  if (!m) return s;
-  return String(m[1]).padStart(2,'0') + '.' + String(m[2]).padStart(2,'0') + (m[3] || '');
+  const m = s && s.match(/(\d+)월(\d+)일(\([가-힣]\))?\s*(\d{1,2}:\d{2})?/);
+  if (!m) return escHtml(s);
+  const date = String(m[1]).padStart(2,'0') + '.' + String(m[2]).padStart(2,'0') + (m[3] || '');
+  const time = m[4] || '';
+  return time ? `${date}<br><span class="text-muted" style="font-size:.8em">${time}</span>` : date;
 }
 
 // 리뷰 행 토글 (버튼 라벨 반응형 복원)
@@ -476,10 +478,10 @@ function _renderHistBody(games, opp) {
         <td class="fw-bold">${escHtml(g['상대팀'])}</td>
         <td class="text-center fw-bold">${g['우리팀_점수']} - ${g['상대팀_점수']}</td>
         <td class="text-center ${diffCls} mob-hide">${diffStr}</td>
-        <td class="text-center"><span class="result-badge ${bcls}">${escHtml(r)}</span></td>
+        <td class="text-center text-nowrap"><span class="result-badge ${bcls}">${escHtml(r)}</span></td>
         <td class="small mob-hide">${escHtml(g['리그'] || '')}</td>
         <td class="small text-muted mob-hide">${escHtml(g['구장'] || '')}</td>
-        <td class="text-end">${reviewBtn}</td>
+        <td class="text-end text-nowrap">${reviewBtn}</td>
       </tr>${reviewRow}`;
   }).join('');
 }
