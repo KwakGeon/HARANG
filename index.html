@@ -772,9 +772,14 @@ function renderScouting() {
     return `<tr class="${rowCls}">
       <td class="fw-bold">${escHtml(b['name'])}${threat}</td>
       <td class="text-center">${b['경기']}</td>
+      <td class="text-center">${b['타수'] || 0}</td>
+      <td class="text-center">${b['안타'] || 0}</td>
       <td class="text-center">${(b['정규타율'] || 0).toFixed(3)}</td>
       <td class="text-center">${b['타점']}</td>
       <td class="text-center">${b['홈런']}</td>
+      <td class="text-center">${b['볼넷'] || 0}</td>
+      <td class="text-center">${b['삼진'] || 0}</td>
+      <td class="text-center">${(b['OBP'] || 0).toFixed(3)}</td>
       <td class="text-center">${(b['SLG'] || 0).toFixed(3)}</td>
       <td class="text-center fw-bold">${(b['OPS'] || 0).toFixed(3)}</td>
     </tr>`;
@@ -827,9 +832,9 @@ function renderScouting() {
       <div class="card-header bg-dark text-white py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <span class="small fw-bold">투수 유형 분류 기준</span>
         <div class="d-flex gap-1 flex-wrap" style="font-size:.72rem">
-          <span class="badge bg-warning text-dark">제구형 = BB/9≤3.0 &amp; K/9≥5.0</span>
-          <span class="badge bg-danger">파워형 = K/9≥7.0</span>
-          <span class="badge bg-info text-dark">불안형 = BB/9&gt;4.5</span>
+          <span class="badge bg-warning text-dark">제구형 = 볼넷율≤3.0 &amp; 삼진율≥5.0</span>
+          <span class="badge bg-danger">파워형 = 삼진율≥7.0</span>
+          <span class="badge bg-info text-dark">불안형 = 볼넷율&gt;4.5</span>
           <span class="badge bg-primary">일반형</span>
         </div>
       </div>
@@ -844,8 +849,8 @@ function renderScouting() {
                 <th class="text-center">방어율</th>
                 <th class="text-center">삼진</th>
                 <th class="text-center">볼넷</th>
-                <th class="text-center">K/9</th>
-                <th class="text-center">BB/9</th>
+                <th class="text-center">삼진율</th>
+                <th class="text-center">볼넷율</th>
                 <th class="text-center">유형</th>
               </tr>
             </thead>
@@ -873,15 +878,20 @@ function renderScouting() {
               <tr>
                 <th>선수</th>
                 <th class="text-center">경기</th>
+                <th class="text-center">타수</th>
+                <th class="text-center">안타</th>
                 <th class="text-center">타율</th>
                 <th class="text-center">타점</th>
                 <th class="text-center">홈런</th>
+                <th class="text-center">볼넷</th>
+                <th class="text-center">삼진</th>
+                <th class="text-center">출루율</th>
                 <th class="text-center">장타율</th>
                 <th class="text-center">OPS</th>
               </tr>
             </thead>
             <tbody>
-              ${batterRows || '<tr><td colspan="7" class="text-center text-muted py-3">타자 데이터 없음</td></tr>'}
+              ${batterRows || '<tr><td colspan="12" class="text-center text-muted py-3">타자 데이터 없음</td></tr>'}
             </tbody>
           </table>
         </div>
