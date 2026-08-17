@@ -23,6 +23,41 @@
     th[data-sort]:hover { background: #293e56 !important; }
     .mvp-popover { max-width: 420px !important; }
     .mvp-popover .popover-body { padding: .75rem 1rem; }
+
+    /* ── 모바일 하단 탭바 ── */
+    .mobile-bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: rgba(26, 46, 74, 0.97);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-top: 1px solid rgba(255,255,255,.13);
+      z-index: 1050;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .mob-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 8px 4px 10px;
+      background: none;
+      border: none;
+      color: rgba(255,255,255,.45);
+      cursor: pointer;
+      transition: color .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .mob-tab.active { color: #fff; }
+    .mob-tab .mob-icon { font-size: 1.3rem; line-height: 1; }
+    .mob-tab .mob-label { font-size: .6rem; font-weight: 500; letter-spacing: .02em; }
+    @media (max-width: 768px) {
+      .nav-tabs { display: none !important; }
+      .mobile-bottom-nav { display: flex; }
+      body { padding-bottom: 72px; }
+    }
   </style>
 </head>
 <body>
@@ -61,6 +96,14 @@
 
   </div>
 </div>
+
+<!-- 모바일 하단 탭바 -->
+<nav class="mobile-bottom-nav">
+  <button class="mob-tab active" data-tab="summary"><span class="mob-icon">📊</span><span class="mob-label">상대전적</span></button>
+  <button class="mob-tab" data-tab="history"><span class="mob-icon">📋</span><span class="mob-label">전적</span></button>
+  <button class="mob-tab" data-tab="charts"><span class="mob-icon">📈</span><span class="mob-label">차트</span></button>
+  <button class="mob-tab" data-tab="mvp"><span class="mob-icon">🏆</span><span class="mob-label">MVP</span></button>
+</nav>
 
 <script>
 let allGames = [];
@@ -453,15 +496,18 @@ function renderCharts(games) {
   });
 }
 
-/* ── 탭 전환 ── */
+/* ── 탭 전환 (상단 탭 · 하단 탭바 동기화) ── */
 document.addEventListener('click', e => {
   const btn = e.target.closest('[data-tab]');
   if (!btn) return;
-  document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  const tab = btn.dataset.tab;
+  // 상단 nav-link와 하단 mob-tab 모두 동기화
+  document.querySelectorAll('[data-tab]').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
   ['summary','history','charts','mvp'].forEach(t => {
     const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
-    el.style.display = t === btn.dataset.tab ? '' : 'none';
+    el.style.display = t === tab ? '' : 'none';
   });
 });
 
