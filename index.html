@@ -780,16 +780,12 @@ function renderScouting() {
     </tr>`;
   }).join('');
 
-  const statusBadge = is_upcoming
-    ? `<span class="badge bg-success ms-2">다음 경기 예정</span>`
-    : `<span class="badge bg-secondary ms-2">최근 상대팀</span>`;
-
   el.innerHTML = `
     <div class="alert alert-primary d-flex align-items-center gap-3 mb-3 mt-1">
       <span style="font-size:1.8rem">🎯</span>
       <div>
-        <div class="fw-bold fs-6">${escHtml(opponent)}${statusBadge}</div>
-        <small class="opacity-75">${escHtml(game_date)} 기준 &nbsp;·&nbsp; 시즌 누적 데이터</small>
+        <div class="fw-bold fs-6">${escHtml(opponent)} <span class="badge bg-secondary ms-1">가장 최근 경기</span></div>
+        <small class="opacity-75">${escHtml(game_date)} &nbsp;·&nbsp; 시즌 누적 데이터</small>
       </div>
     </div>
 

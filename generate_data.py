@@ -1,9 +1,9 @@
-from scraper import scrape_season, fetch_pitcher_ranking, fetch_hitter_ranking, scrape_next_opponent
+from scraper import scrape_season, fetch_pitcher_ranking, fetch_hitter_ranking
 from boxscore import fetch_boxscore, generate_best_worst, extract_player_stats
 import json
 import re
 import time
-from datetime import datetime
+from datetime import datetime, date
 
 SEASONS = [2024, 2025, 2026]
 
@@ -251,23 +251,40 @@ def main():
                 })
             mvp_stats["batter"] = batters
 
-    # ── 전력분석: 다음 경기 상대팀 스카우팅 ────────────────────
+    # ── 전력분석: 오늘 날짜 기준 가장 최근 경기 상대팀 ────────────────────
     scouting = None
     if mvp_stats:
         print("\n전력분석 수집 중...")
-        next_opp = scrape_next_opponent(cur_season)
-        is_upcoming = next_opp is not None
+        today = datetime.today().date()
 
-        if not next_opp:
-            # 폴백: 현 시즌 가장 최근 경기 상대팀 (game_idx 있는 것 중)
-            cur_games = [g for g in unique if g.get("시즌") == cur_season and g.get("상대팀_idx")]
-            if cur_games:
-                last_g = cur_games[-1]
-                next_opp = {
-                    "날짜":       last_g["날짜"],
-                    "상대팀":     last_g["상대팀"],
-                    "상대팀_idx": last_g.get("상대팀_idx"),
-                }
+        def _parse_game_date(date_str, season):
+            m = re.search(r'(\d+)월(\d+)일', date_str)
+            if not m:
+                return None
+            try:
+                return date(season, int(m.group(1)), int(m.group(2)))
+            except ValueError:
+                return None
+
+        cur_games = [g for g in unique if g.get("시즌") == cur_season and g.get("상대팀_idx")]
+
+        # 오늘 이전(포함) 경기만 → 날짜 내림차순 정렬 → 가장 최근
+        dated_games = []
+        for g in cur_games:
+            gd = _parse_game_date(g.get("날짜", ""), cur_season)
+            if gd and gd <= today:
+                dated_games.append((gd, g))
+        dated_games.sort(key=lambda x: x[0], reverse=True)
+
+        next_opp = None
+        if dated_games:
+            last_g = dated_games[0][1]
+            next_opp = {
+                "날짜":       last_g["날짜"],
+                "상대팀":     last_g["상대팀"],
+                "상대팀_idx": last_g.get("상대팀_idx"),
+            }
+            print(f"  최근 경기: {last_g['날짜']} vs {last_g['상대팀']}")
 
         if next_opp and next_opp.get("상대팀_idx"):
             opp_idx  = next_opp["상대팀_idx"]
@@ -275,14 +292,13 @@ def main():
             print(f"  상대팀: {opp_name} (idx={opp_idx})")
             opp_batters  = fetch_hitter_ranking(cur_season, opp_idx)
             opp_pitchers = fetch_pitcher_ranking(cur_season, opp_idx)
-            # 경기 기록이 없는 선수 제외
             opp_batters  = [b for b in opp_batters  if b.get("경기", 0) > 0]
             opp_pitchers = [p for p in opp_pitchers if p.get("경기", 0) > 0]
             scouting = {
                 "opponent":     opp_name,
                 "opponent_idx": opp_idx,
                 "game_date":    next_opp["날짜"],
-                "is_upcoming":  is_upcoming,
+                "is_upcoming":  False,
                 "batters":      opp_batters,
                 "pitchers":     opp_pitchers,
             }
