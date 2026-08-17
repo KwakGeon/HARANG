@@ -1,4 +1,4 @@
-from scraper import scrape_season, fetch_pitcher_ranking, fetch_hitter_ranking, scrape_next_opponent, scrape_upcoming_by_league
+from scraper import scrape_season, fetch_pitcher_ranking, fetch_hitter_ranking, scrape_next_opponent, scrape_upcoming_by_league, scrape_league_start_dates
 from boxscore import fetch_boxscore, generate_best_worst, extract_player_stats
 import json
 import re
@@ -391,8 +391,9 @@ def main():
         mvp_stats["leagues"] = cur_season_leagues
 
     # ── 전력분석: 리그별 예정 경기 기준 ────────────────────────────────
-    scouting          = None
+    scouting           = None
     scouting_by_league = []
+    league_start_dates = {}
     if cur_season:
         print("\n전력분석 수집 중...")
         today = datetime.today().date()
@@ -413,13 +414,42 @@ def main():
         # backward compat: scouting = 리그 전체 기준 가장 빠른 경기
         scouting = scouting_by_league[0] if scouting_by_league else None
 
+        # ── 리그별 개막일 수집 ────────────────────────────────────────
+        print("\n리그별 개막일 수집 중...")
+        league_opp_idx = {}
+        for g in unique:
+            if g.get("시즌") == cur_season and g.get("리그") and g.get("상대팀_idx"):
+                lg = g["리그"]
+                if lg not in league_opp_idx:
+                    league_opp_idx[lg] = g["상대팀_idx"]
+        for lg, ng in next_by_league.items():
+            if lg not in league_opp_idx and ng.get("상대팀_idx"):
+                league_opp_idx[lg] = ng["상대팀_idx"]
+
+        fetched_cache = {}
+        raw_dates = {}
+        for lg, opp_idx in league_opp_idx.items():
+            if opp_idx not in fetched_cache:
+                print(f"  club_idx={opp_idx} 일정 조회...")
+                fetched_cache[opp_idx] = scrape_league_start_dates(cur_season, opp_idx)
+                time.sleep(0.5)
+            dates = fetched_cache[opp_idx]
+            if lg in dates:
+                d = dates[lg]
+                if lg not in raw_dates or d < raw_dates[lg]:
+                    raw_dates[lg] = d
+
+        league_start_dates = {lg: d.strftime("%Y-%m-%d") for lg, d in raw_dates.items()}
+        print(f"  리그 개막일: {league_start_dates}")
+
     data = {
         "generated_at":      datetime.now().strftime("%Y-%m-%d %H:%M"),
         "total":             len(unique),
         "games":             unique,
         "mvp_stats":         mvp_stats,
         "scouting":          scouting,
-        "scouting_by_league": scouting_by_league,
+        "scouting_by_league":  scouting_by_league,
+        "league_start_dates":  league_start_dates,
     }
 
     with open("games_data.json", "w", encoding="utf-8") as f:

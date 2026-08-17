@@ -274,6 +274,42 @@ def scrape_next_opponent(season, today=None):
     return upcoming[0][1] if upcoming else None
 
 
+def scrape_league_start_dates(season, club_idx):
+    """Fetch a club's full season schedule → {league_name: earliest_date} dict.
+
+    By passing an opponent's club_idx, this reveals the true league start date
+    even for rounds our team has a bye week.
+    """
+    from datetime import date as _date
+    url = (
+        f"{BASE_URL}/club/info/schedule/table"
+        f"?season={season}&club_idx={club_idx}&game_type=0&lig_idx=0&group=0&month=0&page=1"
+    )
+    html = get_page(url)
+    if not html:
+        return {}
+    soup = BeautifulSoup(html, "html.parser")
+    result = {}
+    for row in soup.find_all("tr"):
+        tds = row.find_all("td")
+        if len(tds) < 2:
+            continue
+        날짜_text = tds[0].get_text(strip=True)
+        리그      = tds[1].get_text(strip=True)
+        if not 리그:
+            continue
+        m = re.search(r'(\d+)월(\d+)일', 날짜_text)
+        if not m:
+            continue
+        try:
+            gd = _date(season, int(m.group(1)), int(m.group(2)))
+        except ValueError:
+            continue
+        if 리그 not in result or gd < result[리그]:
+            result[리그] = gd
+    return result
+
+
 def scrape_upcoming_by_league(season, today=None):
     """Return {league: game_dict} — the earliest upcoming game per league."""
     from datetime import datetime as _dt

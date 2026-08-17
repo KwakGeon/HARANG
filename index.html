@@ -119,6 +119,7 @@ let allGames          = [];
 let mvpData           = null;
 let scoutingData      = null;
 let scoutingByLeague  = [];
+let leagueStartDates  = {};
 let charts = {};
 let histSort = { col: '날짜', dir: -1 };  // 기본: 날짜 내림차순
 
@@ -133,6 +134,7 @@ fetch('games_data.json')
     mvpData           = data.mvp_stats        || null;
     scoutingData      = data.scouting         || null;
     scoutingByLeague  = data.scouting_by_league || [];
+    leagueStartDates  = data.league_start_dates  || {};
     document.getElementById('updated').textContent = '마지막 업데이트: ' + data.generated_at;
     try {
       initFilters();
@@ -167,16 +169,23 @@ function initFilters() {
     leagues.map(l => `<option value="${escHtml(l)}">${escHtml(l)}</option>`).join('');
 
   // 현재 소속 리그 자동 선택:
-  // 각 리그의 첫 경기 날짜(우리 일정 기준)를 구해 오늘 이후 시작한 리그 중 가장 최근 시작 리그 선택
+  // league_start_dates(리그 전체 일정 기반 개막일)가 있으면 우선 사용,
+  // 없으면 allGames(우리 일정)에서 추정
   const todayMs = new Date().setHours(0, 0, 0, 0);
   const leagueFirstMs = {};
-  for (const g of allGames) {
-    if (String(g['시즌']) !== String(curYear) || !g['리그']) continue;
-    const m = g['날짜'] && g['날짜'].match(/(\d+)월(\d+)일/);
-    if (!m) continue;
-    const ms = new Date(curYear, parseInt(m[1]) - 1, parseInt(m[2])).getTime();
-    const lg = g['리그'];
-    if (leagueFirstMs[lg] === undefined || ms < leagueFirstMs[lg]) leagueFirstMs[lg] = ms;
+  if (Object.keys(leagueStartDates).length > 0) {
+    for (const [lg, dateStr] of Object.entries(leagueStartDates)) {
+      leagueFirstMs[lg] = new Date(dateStr).getTime();
+    }
+  } else {
+    for (const g of allGames) {
+      if (String(g['시즌']) !== String(curYear) || !g['리그']) continue;
+      const m = g['날짜'] && g['날짜'].match(/(\d+)월(\d+)일/);
+      if (!m) continue;
+      const ms = new Date(curYear, parseInt(m[1]) - 1, parseInt(m[2])).getTime();
+      const lg = g['리그'];
+      if (leagueFirstMs[lg] === undefined || ms < leagueFirstMs[lg]) leagueFirstMs[lg] = ms;
+    }
   }
   let curLeague = null, latestMs = -Infinity;
   for (const [lg, ms] of Object.entries(leagueFirstMs)) {
