@@ -769,7 +769,8 @@ function renderScouting() {
     // 선택 리그 예정 경기 없으면 가장 빠른 예정 경기로 fallback
     if (!activeData && scoutingData) {
       activeData = scoutingData;
-      leagueMismatch = true;
+      // fallback 데이터가 다른 리그일 때만 배너 표시
+      leagueMismatch = !!(activeData.league && activeData.league !== selectedLeague);
     }
   }
 
