@@ -486,12 +486,42 @@ function renderMVP() {
   // 타율 툴팁용 데이터 맵 갱신
   _mvpBatterMap = Object.fromEntries(batter.map(b => [b.name, b]));
 
+  // 투수: 지표 기준 단순 정렬
   function sortAll(arr, key, asc) {
     return [...arr].sort((a, b) => asc ? a[key] - b[key] : b[key] - a[key]);
   }
 
-  // fmtFn: 배지 값 포맷 함수 | extraFn: 부가정보 | showTooltip: 타율 툴팁 여부
-  function awardCard(title, sorted, key, unit, note, extraFn, fmtFn, showTooltip) {
+  // 타자: 1순위=규정타석 충족, 2순위=지표
+  function sortBatter(arr, key, asc) {
+    return [...arr].sort((a, b) => {
+      const aQ = (a['타석'] || 0) >= 규정타석;
+      const bQ = (b['타석'] || 0) >= 규정타석;
+      if (aQ !== bQ) return aQ ? -1 : 1;
+      return asc ? a[key] - b[key] : b[key] - a[key];
+    });
+  }
+
+  // 동률 처리: 같은 그룹(타자는 규정타석 충족여부 동일)에서 지표가 같으면 공동
+  function assignRanks(sorted, key, isBatter) {
+    const result = [];
+    let rank = 1;
+    for (let i = 0; i < sorted.length; ) {
+      const iQ = isBatter ? (sorted[i]['타석'] || 0) >= 규정타석 : true;
+      let j = i + 1;
+      while (j < sorted.length && sorted[j][key] === sorted[i][key]) {
+        if (isBatter && ((sorted[j]['타석'] || 0) >= 규정타석) !== iQ) break;
+        j++;
+      }
+      const tied = (j - i) > 1;
+      for (let k = i; k < j; k++) result.push({ player: sorted[k], rank, tied });
+      rank += (j - i);
+      i = j;
+    }
+    return result;
+  }
+
+  // isBatter: 규정타석 배지 표시 + 규정 우선 동률 판정
+  function awardCard(title, sorted, key, unit, note, extraFn, fmtFn, showTooltip, isBatter) {
     unit = unit || '';
     const headerNote = note ? ` <small class="opacity-75 fw-normal">${note}</small>` : '';
     if (!sorted.length) {
@@ -502,12 +532,30 @@ function renderMVP() {
         </div></div>`;
     }
 
-    function renderRow(p, rank, medal) {
-      const lbl = medal
-        ? `<span style="font-size:1.4rem;width:2.2rem;flex-shrink:0">${medal}</span>`
-        : `<span class="text-muted" style="width:2.2rem;flex-shrink:0;font-size:.82rem">${rank}위</span>`;
-      const sub  = extraFn ? extraFn(p) : `${p['경기']}경기`;
-      const val  = fmtFn   ? fmtFn(p[key]) : p[key];
+    const ranked = assignRanks(sorted, key, isBatter);
+
+    function makeLabel(rank, tied) {
+      if (rank <= 3) {
+        const m = medals[rank - 1];
+        return tied
+          ? `<span style="width:3.2rem;flex-shrink:0;display:inline-flex;flex-direction:column;align-items:center;line-height:1.1">
+               <span style="font-size:1.05rem">${m}</span>
+               <span class="text-muted" style="font-size:.58rem">공동</span>
+             </span>`
+          : `<span style="font-size:1.4rem;width:2.2rem;flex-shrink:0">${m}</span>`;
+      }
+      const label = tied ? `공동${rank}위` : `${rank}위`;
+      return `<span class="text-muted" style="min-width:3rem;flex-shrink:0;font-size:.78rem;text-align:center">${label}</span>`;
+    }
+
+    function renderRow({ player: p, rank, tied }) {
+      const lbl = makeLabel(rank, tied);
+      const sub = extraFn ? extraFn(p) : `${p['경기']}경기`;
+      const val = fmtFn   ? fmtFn(p[key]) : p[key];
+      const isQ = isBatter && (p['타석'] || 0) >= 규정타석;
+      const qBadge = isQ
+        ? `<span class="badge bg-success ms-1" style="font-size:.55rem;vertical-align:middle;padding:1px 4px">규정</span>`
+        : '';
       const info = showTooltip
         ? `<button class="mvp-avg-info btn btn-link p-0 ms-1 text-muted"
                    data-mvp-name="${escHtml(p.name)}"
@@ -515,7 +563,7 @@ function renderMVP() {
         : '';
       return `<div class="d-flex align-items-center py-2 border-bottom">
         ${lbl}
-        <div class="flex-grow-1 fw-bold ms-1">${escHtml(p.name)}${info}</div>
+        <div class="flex-grow-1 fw-bold ms-1">${escHtml(p.name)}${qBadge}${info}</div>
         <div class="text-end">
           <span class="badge bg-primary rounded-pill">${val}${unit}</span>
           <div class="text-muted" style="font-size:.72rem">${sub}</div>
@@ -523,12 +571,20 @@ function renderMVP() {
       </div>`;
     }
 
-    const allHtml = sorted.map((p, i) => renderRow(p, i + 1, medals[i] ?? null)).join('');
+    const top  = ranked.filter(r => r.rank <= 3);
+    const rest = ranked.filter(r => r.rank > 3);
+    const topHtml  = top.map(r => renderRow(r)).join('');
+    const restHtml = rest.length
+      ? `<details>
+           <summary style="cursor:pointer;list-style:none;outline:none" class="text-muted small py-2 ps-1">▼ ${rest.length}명 더 보기</summary>
+           <div>${rest.map(r => renderRow(r)).join('')}</div>
+         </details>`
+      : '';
 
     return `<div class="col-md-6 col-xl-4">
       <div class="card border-0 shadow-sm h-100">
         <div class="card-header bg-dark text-white fw-bold py-2">${title}${headerNote}</div>
-        <div class="card-body py-2">${allHtml}</div>
+        <div class="card-body py-2">${topHtml}${restHtml}</div>
       </div></div>`;
   }
 
@@ -536,14 +592,14 @@ function renderMVP() {
   const fmtPct = v => (typeof v === 'number' ? v.toFixed(1) : v);
   const pitExtra = p => `${p['이닝']}이닝 · ${p['경기']}경기`;
 
-  const pitERA = sortAll(pitcher, '방어율', true);
-  const pitK   = sortAll(pitcher, '삼진',   false);
-  const batAVG = sortAll(batter,  '타율',   false);
-  const batRBI = sortAll(batter,  '타점',   false);
-  const batOPS = sortAll(batter,  'OPS',    false);
-  const batSB  = sortAll(batter,  '도루',   false);
-  const batSO  = sortAll(batter,  '삼진',   true);
-  const batATT = sortAll(batter,  '출석률', false);
+  const pitERA = sortAll(pitcher,    '방어율', true);
+  const pitK   = sortAll(pitcher,    '삼진',   false);
+  const batAVG = sortBatter(batter,  '타율',   false);
+  const batRBI = sortBatter(batter,  '타점',   false);
+  const batOPS = sortBatter(batter,  'OPS',    false);
+  const batSB  = sortBatter(batter,  '도루',   false);
+  const batSO  = sortBatter(batter,  '삼진',   true);
+  const batATT = sortBatter(batter,  '출석률', false);
 
   el.innerHTML = `
     <div class="alert alert-info d-flex align-items-center gap-2 mb-3 mt-1">
@@ -562,12 +618,12 @@ function renderMVP() {
 
     <h5 class="fw-bold text-secondary mb-2">🏏 타자 부문</h5>
     <div class="row g-3">
-      ${awardCard('타율',      batAVG, '타율',   '',  '실책출루 포함', null, fmt3, true)}
-      ${awardCard('타점',      batRBI, '타점',   '점')}
-      ${awardCard('OPS',       batOPS, 'OPS',    '',  null,            null, fmt3)}
-      ${awardCard('도루',      batSB,  '도루',   '개')}
-      ${awardCard('최소 삼진', batSO,  '삼진',   '개', '낮을수록 Good')}
-      ${awardCard('출석왕',    batATT, '출석률', '%',  null,            null, fmtPct)}
+      ${awardCard('타율',      batAVG, '타율',   '',   '실책출루 포함', null, fmt3,   true,  true)}
+      ${awardCard('타점',      batRBI, '타점',   '점', null,            null, null,   false, true)}
+      ${awardCard('OPS',       batOPS, 'OPS',    '',   null,            null, fmt3,   false, true)}
+      ${awardCard('도루',      batSB,  '도루',   '개', null,            null, null,   false, true)}
+      ${awardCard('최소 삼진', batSO,  '삼진',   '개', '낮을수록 Good', null, null,   false, true)}
+      ${awardCard('출석왕',    batATT, '출석률', '%',  null,            null, fmtPct, false, true)}
     </div>`;
 
   initMVPPopovers();
