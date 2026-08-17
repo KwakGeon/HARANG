@@ -109,9 +109,10 @@
 </nav>
 
 <script>
-let allGames     = [];
-let mvpData      = null;
-let scoutingData = null;
+let allGames          = [];
+let mvpData           = null;
+let scoutingData      = null;
+let scoutingByLeague  = [];
 let charts = {};
 let histSort = { col: '날짜', dir: -1 };  // 기본: 날짜 내림차순
 
@@ -122,17 +123,16 @@ fetch('games_data.json')
     return r.json();
   })
   .then(data => {
-    allGames     = data.games;
-    mvpData      = data.mvp_stats  || null;
-    scoutingData = data.scouting   || null;
+    allGames          = data.games;
+    mvpData           = data.mvp_stats        || null;
+    scoutingData      = data.scouting         || null;
+    scoutingByLeague  = data.scouting_by_league || [];
     document.getElementById('updated').textContent = '마지막 업데이트: ' + data.generated_at;
     try {
       initFilters();
       document.getElementById('loading').style.display = 'none';
       document.getElementById('app').style.display = '';
       render();
-      renderMVP();
-      renderScouting();
     } catch(e) {
       document.getElementById('loading').innerHTML =
         '<div class="alert alert-warning"><b>렌더링 오류:</b> ' + e.message + '<br><pre>' + e.stack + '</pre></div>';
@@ -160,8 +160,9 @@ function initFilters() {
   sl.innerHTML = '<option value="all">전체 리그</option>' +
     leagues.map(l => `<option value="${escHtml(l)}">${escHtml(l)}</option>`).join('');
 
-  ss.addEventListener('change', render);
-  sl.addEventListener('change', render);
+  function onFilterChange() { render(); renderMVP(); renderScouting(); }
+  ss.addEventListener('change', onFilterChange);
+  sl.addEventListener('change', onFilterChange);
 }
 
 function getFiltered() {
@@ -530,6 +531,13 @@ function renderMVP() {
     return;
   }
 
+  const selectedLeague = document.getElementById('filterLeague').value;
+  const mvpLeagues     = mvpData.leagues || [];
+  if (selectedLeague !== 'all' && mvpLeagues.length > 0 && !mvpLeagues.includes(selectedLeague)) {
+    el.innerHTML = '<div class="alert alert-secondary mt-2"><b>해당 리그는 아직 경기 전입니다.</b><br><small class="text-muted">경기가 시작되면 MVP 통계가 표시됩니다.</small></div>';
+    return;
+  }
+
   const { season, total_games, batter, pitcher } = mvpData;
   const medals = ['🥇', '🥈', '🥉'];
   const 규정이닝 = total_games;
@@ -686,12 +694,21 @@ function renderScouting() {
   const el = document.getElementById('tabScouting');
   if (!el) return;
 
-  if (!scoutingData) {
+  // 리그 필터에 맞는 scouting 데이터 선택
+  const selectedLeague = document.getElementById('filterLeague').value;
+  let activeData;
+  if (selectedLeague === 'all') {
+    activeData = scoutingData;  // 전체: 가장 빠른 예정 경기
+  } else {
+    activeData = scoutingByLeague.find(s => s.league === selectedLeague) || null;
+  }
+
+  if (!activeData) {
     el.innerHTML = '<div class="alert alert-secondary mt-3"><b>다음 예정된 경기가 없습니다.</b><br><small class="text-muted">예정 경기가 등록되면 generate_data.py를 다시 실행해주세요.</small></div>';
     return;
   }
 
-  const { opponent, game_date, priority, head_to_head_count = 0, batters = [], pitchers = [] } = scoutingData;
+  const { opponent, game_date, priority, head_to_head_count = 0, batters = [], pitchers = [] } = activeData;
 
   // 이닝 문자열 "11.1" → 실수 (아웃카운트 기반)
   function parsIP(s) {

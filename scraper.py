@@ -234,11 +234,8 @@ def parse_upcoming_row(row):
         return None
 
 
-def scrape_next_opponent(season, today=None):
-    """Return the earliest scheduled game whose date >= today, or None.
-
-    Filters by date to avoid treating past unrecorded games as upcoming.
-    """
+def _collect_upcoming(season, today):
+    """Return sorted list of (date, game_dict) for all games with date >= today."""
     from datetime import date as _date, datetime as _dt
     if today is None:
         today = _dt.today().date()
@@ -248,7 +245,7 @@ def scrape_next_opponent(season, today=None):
     )
     html = get_page(url)
     if not html:
-        return None
+        return []
     soup = BeautifulSoup(html, "html.parser")
     upcoming = []
     for row in soup.find_all("tr"):
@@ -264,10 +261,30 @@ def scrape_next_opponent(season, today=None):
             continue
         if gd >= today:
             upcoming.append((gd, g))
-    if not upcoming:
-        return None
     upcoming.sort(key=lambda x: x[0])
-    return upcoming[0][1]
+    return upcoming
+
+
+def scrape_next_opponent(season, today=None):
+    """Return the earliest scheduled game whose date >= today, or None."""
+    from datetime import datetime as _dt
+    if today is None:
+        today = _dt.today().date()
+    upcoming = _collect_upcoming(season, today)
+    return upcoming[0][1] if upcoming else None
+
+
+def scrape_upcoming_by_league(season, today=None):
+    """Return {league: game_dict} — the earliest upcoming game per league."""
+    from datetime import datetime as _dt
+    if today is None:
+        today = _dt.today().date()
+    result = {}
+    for _gd, g in _collect_upcoming(season, today):
+        league = g.get("리그", "")
+        if league and league not in result:
+            result[league] = g
+    return result
 
 
 def fetch_hitter_ranking(season, club_idx=CLUB_IDX):

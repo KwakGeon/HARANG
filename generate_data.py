@@ -1,4 +1,4 @@
-from scraper import scrape_season, fetch_pitcher_ranking, fetch_hitter_ranking, scrape_next_opponent
+from scraper import scrape_season, fetch_pitcher_ranking, fetch_hitter_ranking, scrape_next_opponent, scrape_upcoming_by_league
 from boxscore import fetch_boxscore, generate_best_worst, extract_player_stats
 import json
 import re
@@ -151,6 +151,131 @@ def calc_season_mvp(season_ps_list, total_games, season):
     }
 
 
+def _compute_scouting(next_opp, unique, cur_season):
+    """예정 경기 1건에 대한 전력분석 dict를 반환. 데이터 없으면 None."""
+    opp_name   = next_opp["상대팀"]
+    opp_idx    = next_opp.get("상대팀_idx")
+    opp_league = next_opp.get("리그", "")
+
+    our_season_games  = [g for g in unique if g.get("시즌") == cur_season]
+    is_current_league = any(g.get("리그") == opp_league for g in our_season_games)
+
+    head_to_head = [g for g in unique
+                    if g.get("상대팀") == opp_name
+                    and g.get("리그") == opp_league]
+
+    opp_batters  = []
+    opp_pitchers = []
+    priority     = None
+
+    if is_current_league and head_to_head:
+        priority = "head_to_head"
+        bat_agg = {}
+        pit_agg = {}
+
+        for g in head_to_head:
+            gidx = g.get("game_idx")
+            if not gidx:
+                continue
+            bs = fetch_boxscore(gidx)
+            if not bs:
+                continue
+
+            for b in bs.get("opp_batters", []):
+                nm = b.get("name", "")
+                if not nm or len(nm) < 2 or (b["타수"] == 0 and b["안타"] == 0):
+                    continue
+                plays = b.get("plays", [])
+                볼넷 = sum(1 for p in plays if "4구" in p)
+                사구 = sum(1 for p in plays if "몸맞" in p)
+                삼진 = sum(1 for p in plays if "삼진" in p)
+                if nm not in bat_agg:
+                    bat_agg[nm] = dict(경기=0, 타수=0, 안타=0, 타점=0,
+                                       득점=0, 도루=0, 볼넷=0, 사구=0,
+                                       삼진=0, 홈런=0, 삼루타=0, 이루타=0)
+                d = bat_agg[nm]
+                d["경기"] += 1
+                d["타수"] += b["타수"]; d["안타"] += b["안타"]
+                d["타점"] += b["타점"]; d["득점"] += b["득점"]
+                d["도루"] += b["도루"]; d["볼넷"] += 볼넷
+                d["사구"] += 사구;       d["삼진"] += 삼진
+                for play in plays:
+                    if "홈런" in play:
+                        d["홈런"] += 1
+                    elif any(x in play for x in ["월3", "중3", "우중3", "좌중3"]):
+                        d["삼루타"] += 1
+                    elif any(x in play for x in ["월2", "중2", "우중2", "좌중2"]):
+                        d["이루타"] += 1
+
+            for p in bs.get("opp_pitchers", []):
+                nm = p.get("name", "")
+                if not nm or len(nm) < 2:
+                    continue
+                if nm not in pit_agg:
+                    pit_agg[nm] = dict(경기=0, 삼진=0, 볼넷=0,
+                                       자책점=0, 실점=0, 이닝=0.0)
+                d = pit_agg[nm]
+                d["경기"]  += 1
+                d["삼진"]  += p.get("삼진", 0)
+                d["볼넷"]  += p.get("볼넷", 0)
+                d["자책점"] += p.get("자책점", 0)
+                d["실점"]  += p.get("실점", 0)
+                d["이닝"]  += _parse_box_innings(p.get("이닝", "0"))
+
+        for nm, d in bat_agg.items():
+            ab = d["타수"]; bb = d["볼넷"]; hbp = d["사구"]
+            pa = ab + bb + hbp
+            if pa == 0:
+                continue
+            h      = d["안타"]
+            hr     = d["홈런"]; tri = d["삼루타"]; dbl = d["이루타"]
+            single = max(0, h - dbl - tri - hr)
+            obp    = round((h + bb + hbp) / pa, 3)
+            tb     = single + dbl*2 + tri*3 + hr*4
+            slg    = round(tb / ab, 3) if ab > 0 else 0.0
+            opp_batters.append({
+                "name": nm, "경기": d["경기"], "타수": ab, "안타": h,
+                "타율": round(h / ab, 3) if ab > 0 else 0.0,
+                "타점": d["타점"], "도루": d["도루"], "삼진": d["삼진"],
+                "볼넷": bb, "홈런": hr, "득점": d["득점"],
+                "OBP": obp, "SLG": slg, "OPS": round(obp + slg, 3),
+            })
+
+        for nm, d in pit_agg.items():
+            innings = d["이닝"]
+            era = round(d["자책점"] / innings * 7, 2) if innings > 0 else 99.99
+            opp_pitchers.append({
+                "name": nm, "경기": d["경기"],
+                "이닝": str(round(innings, 1)),
+                "삼진": d["삼진"], "볼넷": d["볼넷"],
+                "실점": d["실점"], "자책점": d["자책점"], "방어율": era,
+            })
+
+    elif opp_idx:
+        if is_current_league:
+            priority = "current_league"
+        else:
+            priority = "next_league"
+        opp_batters  = fetch_hitter_ranking(cur_season, opp_idx)
+        opp_pitchers = fetch_pitcher_ranking(cur_season, opp_idx)
+        opp_batters  = [b for b in opp_batters  if b.get("경기", 0) > 0]
+        opp_pitchers = [p for p in opp_pitchers if p.get("경기", 0) > 0]
+
+    if not priority:
+        return None
+
+    return {
+        "league":             opp_league,
+        "opponent":           opp_name,
+        "opponent_idx":       opp_idx,
+        "game_date":          next_opp["날짜"],
+        "priority":           priority,
+        "head_to_head_count": len(head_to_head),
+        "batters":            opp_batters,
+        "pitchers":           opp_pitchers,
+    }
+
+
 def main():
     all_games = []
     for season in SEASONS:
@@ -200,6 +325,7 @@ def main():
 
     # ── MVP 통계 계산 (최신 시즌 기준) ────────────────────
     mvp_stats = None
+    cur_season = None
     if season_ps:
         cur_season = max(season_ps.keys())
         total_cur  = sum(1 for g in unique if g.get("시즌") == cur_season and g.get("game_idx"))
@@ -216,7 +342,6 @@ def main():
         # 실책_기록(툴팁용)만 박스스코어에서 병합
         hit_ranking = fetch_hitter_ranking(cur_season)
         if hit_ranking and mvp_stats:
-            # 박스스코어에서 실책_기록 수집 (short_name 키)
             reach_map = {}
             for ps in season_ps.get(cur_season, []):
                 for b in ps.get("batters", []):
@@ -258,171 +383,43 @@ def main():
                 })
             mvp_stats["batter"] = batters
 
-    # ── 전력분석: 오늘 이후 가장 빠른 예정 경기 ─────────────────────────
-    scouting = None
-    if mvp_stats:
+        # MVP 데이터가 커버하는 리그 목록 (브라우저 필터 연동용)
+        cur_season_leagues = list(dict.fromkeys(
+            g.get("리그", "") for g in unique
+            if g.get("시즌") == cur_season and g.get("리그") and g.get("game_idx")
+        ))
+        mvp_stats["leagues"] = cur_season_leagues
+
+    # ── 전력분석: 리그별 예정 경기 기준 ────────────────────────────────
+    scouting          = None
+    scouting_by_league = []
+    if cur_season:
         print("\n전력분석 수집 중...")
         today = datetime.today().date()
-        next_opp = scrape_next_opponent(cur_season, today)
+        next_by_league = scrape_upcoming_by_league(cur_season, today)
 
-        if not next_opp:
+        if not next_by_league:
             print("  다음 예정 경기 없음")
         else:
-            opp_name   = next_opp["상대팀"]
-            opp_idx    = next_opp.get("상대팀_idx")
-            opp_league = next_opp.get("리그", "")
-            print(f"  예정 경기: {next_opp['날짜']} vs {opp_name} [{opp_league}]")
-
-            # 예정 경기와 동일 리그인 게임이 우리 시즌 기록에 있으면 현재 소속 리그
-            our_season_games = [g for g in unique if g.get("시즌") == cur_season]
-            is_current_league = any(g.get("리그") == opp_league for g in our_season_games)
-
-            # 리그명 완전 일치로 상대전적 필터 (부분 매칭 제거)
-            head_to_head = [g for g in unique
-                            if g.get("상대팀") == opp_name
-                            and g.get("리그") == opp_league]
-
-            opp_batters  = []
-            opp_pitchers = []
-            priority     = None
-
-            if is_current_league and head_to_head:
-                # 1순위: 박스스코어 맞대결 기반 분석
-                priority = "head_to_head"
-                print(f"  1순위(우리 전적 기준): 맞대결 {len(head_to_head)}경기 박스스코어 분석")
-
-                bat_agg = {}  # name → 누적 dict
-                pit_agg = {}  # name → 누적 dict
-
-                for g in head_to_head:
-                    gidx = g.get("game_idx")
-                    if not gidx:
-                        continue
-                    bs = fetch_boxscore(gidx)
-                    if not bs:
-                        continue
-
-                    for b in bs.get("opp_batters", []):
-                        nm = b.get("name", "")
-                        if not nm or len(nm) < 2:
-                            continue
-                        if b["타수"] == 0 and b["안타"] == 0:
-                            continue
-                        plays = b.get("plays", [])
-                        볼넷 = sum(1 for p in plays if "4구" in p)
-                        사구 = sum(1 for p in plays if "몸맞" in p)
-                        삼진 = sum(1 for p in plays if "삼진" in p)
-                        if nm not in bat_agg:
-                            bat_agg[nm] = dict(경기=0, 타수=0, 안타=0, 타점=0,
-                                               득점=0, 도루=0, 볼넷=0, 사구=0,
-                                               삼진=0, 홈런=0, 삼루타=0, 이루타=0)
-                        d = bat_agg[nm]
-                        d["경기"] += 1
-                        d["타수"] += b["타수"]; d["안타"] += b["안타"]
-                        d["타점"] += b["타점"]; d["득점"] += b["득점"]
-                        d["도루"] += b["도루"]; d["볼넷"] += 볼넷
-                        d["사구"] += 사구;       d["삼진"] += 삼진
-                        # 장타 분류
-                        for play in plays:
-                            if "홈런" in play:
-                                d["홈런"] += 1
-                            elif any(x in play for x in ["월3", "중3", "우중3", "좌중3"]):
-                                d["삼루타"] += 1
-                            elif any(x in play for x in ["월2", "중2", "우중2", "좌중2"]):
-                                d["이루타"] += 1
-
-                    for p in bs.get("opp_pitchers", []):
-                        nm = p.get("name", "")
-                        if not nm or len(nm) < 2:
-                            continue
-                        if nm not in pit_agg:
-                            pit_agg[nm] = dict(경기=0, 삼진=0, 볼넷=0,
-                                               자책점=0, 실점=0, 이닝=0.0)
-                        d = pit_agg[nm]
-                        d["경기"]  += 1
-                        d["삼진"]  += p.get("삼진", 0)
-                        d["볼넷"]  += p.get("볼넷", 0)
-                        d["자책점"] += p.get("자책점", 0)
-                        d["실점"]  += p.get("실점", 0)
-                        d["이닝"]  += _parse_box_innings(p.get("이닝", "0"))
-
-                # 타자 파생 지표
-                for nm, d in bat_agg.items():
-                    ab  = d["타수"]; bb = d["볼넷"]; hbp = d["사구"]
-                    pa  = ab + bb + hbp
-                    if pa == 0:
-                        continue
-                    h      = d["안타"]
-                    hr     = d["홈런"]; tri = d["삼루타"]; dbl = d["이루타"]
-                    single = max(0, h - dbl - tri - hr)
-                    obp    = round((h + bb + hbp) / pa, 3)
-                    tb     = single + dbl*2 + tri*3 + hr*4
-                    slg    = round(tb / ab, 3) if ab > 0 else 0.0
-                    opp_batters.append({
-                        "name":  nm,
-                        "경기":  d["경기"],
-                        "타수":  ab,
-                        "안타":  h,
-                        "타율":  round(h / ab, 3) if ab > 0 else 0.0,
-                        "타점":  d["타점"],
-                        "도루":  d["도루"],
-                        "삼진":  d["삼진"],
-                        "볼넷":  bb,
-                        "홈런":  hr,
-                        "득점":  d["득점"],
-                        "OBP":   obp,
-                        "SLG":   slg,
-                        "OPS":   round(obp + slg, 3),
-                    })
-
-                # 투수 파생 지표
-                for nm, d in pit_agg.items():
-                    innings = d["이닝"]
-                    era = round(d["자책점"] / innings * 7, 2) if innings > 0 else 99.99
-                    opp_pitchers.append({
-                        "name":   nm,
-                        "경기":   d["경기"],
-                        "이닝":   str(round(innings, 1)),
-                        "삼진":   d["삼진"],
-                        "볼넷":   d["볼넷"],
-                        "실점":   d["실점"],
-                        "자책점": d["자책점"],
-                        "방어율": era,
-                    })
-
-            elif opp_idx:
-                # 2순위 or 3순위: 랭킹 페이지 스탯
-                if is_current_league:
-                    priority = "current_league"
-                    print("  2순위(소속 리그 기준): 랭킹 페이지")
+            for league, next_opp in next_by_league.items():
+                print(f"  [{league}] {next_opp['날짜']} vs {next_opp['상대팀']}")
+                entry = _compute_scouting(next_opp, unique, cur_season)
+                if entry:
+                    scouting_by_league.append(entry)
+                    print(f"    -> {entry['priority']}: 타자 {len(entry['batters'])}명 · 투수 {len(entry['pitchers'])}명")
                 else:
-                    priority = "next_league"
-                    print("  3순위(예정 리그 기준): 랭킹 페이지")
-                opp_batters  = fetch_hitter_ranking(cur_season, opp_idx)
-                opp_pitchers = fetch_pitcher_ranking(cur_season, opp_idx)
-                opp_batters  = [b for b in opp_batters  if b.get("경기", 0) > 0]
-                opp_pitchers = [p for p in opp_pitchers if p.get("경기", 0) > 0]
-            else:
-                print("  상대팀 idx 없음: 스카우팅 건너뜀")
+                    print(f"    -> 스카우팅 건너뜀 (상대팀 idx 없음)")
 
-            if priority:
-                scouting = {
-                    "opponent":          opp_name,
-                    "opponent_idx":      opp_idx,
-                    "game_date":         next_opp["날짜"],
-                    "priority":          priority,
-                    "head_to_head_count": len(head_to_head),
-                    "batters":           opp_batters,
-                    "pitchers":          opp_pitchers,
-                }
-                print(f"  타자 {len(opp_batters)}명 · 투수 {len(opp_pitchers)}명 수집")
+        # backward compat: scouting = 리그 전체 기준 가장 빠른 경기
+        scouting = scouting_by_league[0] if scouting_by_league else None
 
     data = {
-        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "total":        len(unique),
-        "games":        unique,
-        "mvp_stats":    mvp_stats,
-        "scouting":     scouting,
+        "generated_at":      datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "total":             len(unique),
+        "games":             unique,
+        "mvp_stats":         mvp_stats,
+        "scouting":          scouting,
+        "scouting_by_league": scouting_by_league,
     }
 
     with open("games_data.json", "w", encoding="utf-8") as f:
@@ -432,6 +429,7 @@ def main():
     print(f"\n완료: {len(unique)}경기 저장 (상세기록 {has_data}경기) → games_data.json")
     if mvp_stats:
         print(f"MVP 집계: {mvp_stats['season']}시즌 타자 {len(mvp_stats['batter'])}명 · 투수 {len(mvp_stats['pitcher'])}명")
+    print(f"전력분석 리그: {[e['league'] for e in scouting_by_league]}")
 
 
 if __name__ == "__main__":
