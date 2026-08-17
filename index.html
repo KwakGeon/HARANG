@@ -193,7 +193,7 @@ function initFilters() {
   }
   if (curLeague) sl.value = curLeague;
 
-  function onFilterChange() { render(); renderMVP(); renderScouting(); }
+  function onFilterChange() { render(); }
   ss.addEventListener('change', onFilterChange);
   sl.addEventListener('change', onFilterChange);
 }
@@ -239,6 +239,8 @@ function render() {
   renderSummary(games);
   renderHistory(games);
   renderCharts(games);
+  renderMVP();
+  renderScouting();
 }
 
 /* ── 요약 지표 ── */
