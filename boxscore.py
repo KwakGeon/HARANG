@@ -184,10 +184,10 @@ def fetch_boxscore(game_idx):
 
     if first_team == MY_TEAM:
         our_bt, opp_bt = tables[1], tables[2]
-        our_pt, _      = tables[3], tables[4]
+        our_pt, opp_pt = tables[3], tables[4]
     else:
         opp_bt, our_bt = tables[1], tables[2]
-        _,      our_pt = tables[3], tables[4]
+        opp_pt, our_pt = tables[3], tables[4]
 
     def parse_table(tbl):
         result = []
@@ -214,6 +214,8 @@ def fetch_boxscore(game_idx):
     return {
         "our_batters":  parse_table(our_bt),
         "our_pitchers": parse_pitchers(our_pt),
+        "opp_batters":  parse_table(opp_bt),
+        "opp_pitchers": parse_pitchers(opp_pt),
         "our_innings":  our_innings,
         "opp_innings":  opp_innings,
     }

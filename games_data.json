@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-17 14:02",
+  "generated_at": "2026-08-17 14:21",
   "total": 38,
   "games": [
     {
@@ -1307,7 +1307,8 @@
     "opponent": "Cuse OG",
     "opponent_idx": 44264,
     "game_date": "08월22일(토) 06:00",
-    "is_upcoming": true,
+    "priority": "current_league",
+    "head_to_head_count": 0,
     "batters": [
       {
         "name": "김성태(21)",

@@ -221,6 +221,7 @@ def parse_upcoming_row(row):
         else:
             return None
         date_str = tds[0].get_text(strip=True)
+        league   = tds[1].get_text(strip=True)
         opponent_idx = None
         for a in game_td.find_all("a", href=True):
             href = a["href"]
@@ -228,7 +229,7 @@ def parse_upcoming_row(row):
                 m = re.search(r"club_idx=(\d+)", href)
                 if m and int(m.group(1)) != CLUB_IDX:
                     opponent_idx = int(m.group(1))
-        return {"날짜": date_str, "상대팀": opp_name, "상대팀_idx": opponent_idx}
+        return {"날짜": date_str, "상대팀": opp_name, "상대팀_idx": opponent_idx, "리그": league}
     except Exception:
         return None
 

@@ -687,11 +687,11 @@ function renderScouting() {
   if (!el) return;
 
   if (!scoutingData) {
-    el.innerHTML = '<div class="alert alert-secondary mt-2">전력분석 데이터가 없습니다. <code>generate_data.py</code>를 다시 실행해주세요.</div>';
+    el.innerHTML = '<div class="alert alert-secondary mt-3"><b>다음 예정된 경기가 없습니다.</b><br><small class="text-muted">예정 경기가 등록되면 generate_data.py를 다시 실행해주세요.</small></div>';
     return;
   }
 
-  const { opponent, game_date, is_upcoming, batters = [], pitchers = [] } = scoutingData;
+  const { opponent, game_date, priority, head_to_head_count = 0, batters = [], pitchers = [] } = scoutingData;
 
   // 이닝 문자열 "11.1" → 실수 (아웃카운트 기반)
   function parsIP(s) {
@@ -780,16 +780,18 @@ function renderScouting() {
     </tr>`;
   }).join('');
 
-  const statusBadge = is_upcoming
-    ? `<span class="badge bg-success ms-2">다음 예정 경기</span>`
-    : `<span class="badge bg-secondary ms-2">최근 경기 (폴백)</span>`;
+  const priorityBadge = priority === 'head_to_head'
+    ? `<span class="badge bg-success ms-2">우리 전적 기준 (${head_to_head_count}경기)</span>`
+    : priority === 'current_league'
+      ? `<span class="badge bg-primary ms-2">소속 리그 기준</span>`
+      : `<span class="badge bg-secondary ms-2">예정 리그 기준</span>`;
 
   el.innerHTML = `
     <div class="alert alert-primary d-flex align-items-center gap-3 mb-3 mt-1">
       <span style="font-size:1.8rem">🎯</span>
       <div>
-        <div class="fw-bold fs-6">${escHtml(opponent)}${statusBadge}</div>
-        <small class="opacity-75">${escHtml(game_date)} &nbsp;·&nbsp; 시즌 누적 데이터</small>
+        <div class="fw-bold fs-6">${escHtml(opponent)}${priorityBadge}</div>
+        <small class="opacity-75">다음 경기: ${escHtml(game_date)}</small>
       </div>
     </div>
 

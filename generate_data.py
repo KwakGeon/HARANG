@@ -251,61 +251,163 @@ def main():
                 })
             mvp_stats["batter"] = batters
 
-    # ── 전력분석: 오늘 이후 가장 빠른 예정 경기 상대팀 ────────────────────
+    # ── 전력분석: 오늘 이후 가장 빠른 예정 경기 ─────────────────────────
     scouting = None
     if mvp_stats:
         print("\n전력분석 수집 중...")
         today = datetime.today().date()
-
-        # 1차: 오늘 이후로 예정된 경기 중 가장 빠른 경기 (날짜 >= 오늘)
         next_opp = scrape_next_opponent(cur_season, today)
-        is_upcoming = next_opp is not None
 
-        # 2차 폴백: 예정 경기가 없으면 오늘 이전 가장 최근 경기
         if not next_opp:
-            cur_games = [g for g in unique if g.get("시즌") == cur_season and g.get("상대팀_idx")]
-            dated_games = []
-            for g in cur_games:
-                m = re.search(r'(\d+)월(\d+)일', g.get("날짜", ""))
-                if not m:
-                    continue
-                try:
-                    gd = date(cur_season, int(m.group(1)), int(m.group(2)))
-                except ValueError:
-                    continue
-                if gd <= today:
-                    dated_games.append((gd, g))
-            dated_games.sort(key=lambda x: x[0], reverse=True)
-            if dated_games:
-                last_g = dated_games[0][1]
-                next_opp = {
-                    "날짜":       last_g["날짜"],
-                    "상대팀":     last_g["상대팀"],
-                    "상대팀_idx": last_g.get("상대팀_idx"),
-                }
-                print(f"  예정 경기 없음 → 폴백: {last_g['날짜']} vs {last_g['상대팀']}")
-
-        if next_opp:
-            print(f"  {'예정' if is_upcoming else '최근'} 경기: {next_opp['날짜']} vs {next_opp['상대팀']}")
-
-        if next_opp and next_opp.get("상대팀_idx"):
-            opp_idx  = next_opp["상대팀_idx"]
-            opp_name = next_opp["상대팀"]
-            opp_batters  = fetch_hitter_ranking(cur_season, opp_idx)
-            opp_pitchers = fetch_pitcher_ranking(cur_season, opp_idx)
-            opp_batters  = [b for b in opp_batters  if b.get("경기", 0) > 0]
-            opp_pitchers = [p for p in opp_pitchers if p.get("경기", 0) > 0]
-            scouting = {
-                "opponent":     opp_name,
-                "opponent_idx": opp_idx,
-                "game_date":    next_opp["날짜"],
-                "is_upcoming":  is_upcoming,
-                "batters":      opp_batters,
-                "pitchers":     opp_pitchers,
-            }
-            print(f"  타자 {len(opp_batters)}명 · 투수 {len(opp_pitchers)}명 수집")
+            print("  다음 예정 경기 없음")
         else:
-            print("  상대팀 idx 없음 — 스카우팅 건너뜀")
+            opp_name   = next_opp["상대팀"]
+            opp_idx    = next_opp.get("상대팀_idx")
+            opp_league = next_opp.get("리그", "")
+            print(f"  예정 경기: {next_opp['날짜']} vs {opp_name} [{opp_league}]")
+
+            # 현재 리그 판별
+            is_current_league = "토요리그" in opp_league
+
+            # 현재 리그에서의 상대전적 (이미 치른 경기)
+            head_to_head = [g for g in unique
+                            if g.get("상대팀") == opp_name
+                            and "토요리그" in g.get("리그", "")]
+
+            opp_batters  = []
+            opp_pitchers = []
+            priority     = None
+
+            if is_current_league and head_to_head:
+                # 1순위: 박스스코어 맞대결 기반 분석
+                priority = "head_to_head"
+                print(f"  1순위(우리 전적 기준): 맞대결 {len(head_to_head)}경기 박스스코어 분석")
+
+                bat_agg = {}  # name → 누적 dict
+                pit_agg = {}  # name → 누적 dict
+
+                for g in head_to_head:
+                    gidx = g.get("game_idx")
+                    if not gidx:
+                        continue
+                    bs = fetch_boxscore(gidx)
+                    if not bs:
+                        continue
+
+                    for b in bs.get("opp_batters", []):
+                        nm = b.get("name", "")
+                        if not nm or len(nm) < 2:
+                            continue
+                        if b["타수"] == 0 and b["안타"] == 0:
+                            continue
+                        plays = b.get("plays", [])
+                        볼넷 = sum(1 for p in plays if "4구" in p)
+                        사구 = sum(1 for p in plays if "몸맞" in p)
+                        삼진 = sum(1 for p in plays if "삼진" in p)
+                        if nm not in bat_agg:
+                            bat_agg[nm] = dict(경기=0, 타수=0, 안타=0, 타점=0,
+                                               득점=0, 도루=0, 볼넷=0, 사구=0,
+                                               삼진=0, 홈런=0, 삼루타=0, 이루타=0)
+                        d = bat_agg[nm]
+                        d["경기"] += 1
+                        d["타수"] += b["타수"]; d["안타"] += b["안타"]
+                        d["타점"] += b["타점"]; d["득점"] += b["득점"]
+                        d["도루"] += b["도루"]; d["볼넷"] += 볼넷
+                        d["사구"] += 사구;       d["삼진"] += 삼진
+                        # 장타 분류
+                        for play in plays:
+                            if "홈런" in play:
+                                d["홈런"] += 1
+                            elif any(x in play for x in ["월3", "중3", "우중3", "좌중3"]):
+                                d["삼루타"] += 1
+                            elif any(x in play for x in ["월2", "중2", "우중2", "좌중2"]):
+                                d["이루타"] += 1
+
+                    for p in bs.get("opp_pitchers", []):
+                        nm = p.get("name", "")
+                        if not nm or len(nm) < 2:
+                            continue
+                        if nm not in pit_agg:
+                            pit_agg[nm] = dict(경기=0, 삼진=0, 볼넷=0,
+                                               자책점=0, 실점=0, 이닝=0.0)
+                        d = pit_agg[nm]
+                        d["경기"]  += 1
+                        d["삼진"]  += p.get("삼진", 0)
+                        d["볼넷"]  += p.get("볼넷", 0)
+                        d["자책점"] += p.get("자책점", 0)
+                        d["실점"]  += p.get("실점", 0)
+                        d["이닝"]  += _parse_innings(p.get("이닝", "0"))
+
+                # 타자 파생 지표
+                for nm, d in bat_agg.items():
+                    ab  = d["타수"]; bb = d["볼넷"]; hbp = d["사구"]
+                    pa  = ab + bb + hbp
+                    if pa == 0:
+                        continue
+                    h      = d["안타"]
+                    hr     = d["홈런"]; tri = d["삼루타"]; dbl = d["이루타"]
+                    single = max(0, h - dbl - tri - hr)
+                    obp    = round((h + bb + hbp) / pa, 3)
+                    tb     = single + dbl*2 + tri*3 + hr*4
+                    slg    = round(tb / ab, 3) if ab > 0 else 0.0
+                    opp_batters.append({
+                        "name":  nm,
+                        "경기":  d["경기"],
+                        "타수":  ab,
+                        "안타":  h,
+                        "타율":  round(h / ab, 3) if ab > 0 else 0.0,
+                        "타점":  d["타점"],
+                        "도루":  d["도루"],
+                        "삼진":  d["삼진"],
+                        "볼넷":  bb,
+                        "홈런":  hr,
+                        "득점":  d["득점"],
+                        "OBP":   obp,
+                        "SLG":   slg,
+                        "OPS":   round(obp + slg, 3),
+                    })
+
+                # 투수 파생 지표
+                for nm, d in pit_agg.items():
+                    innings = d["이닝"]
+                    era = round(d["자책점"] / innings * 7, 2) if innings > 0 else 99.99
+                    opp_pitchers.append({
+                        "name":   nm,
+                        "경기":   d["경기"],
+                        "이닝":   str(round(innings, 1)),
+                        "삼진":   d["삼진"],
+                        "볼넷":   d["볼넷"],
+                        "실점":   d["실점"],
+                        "자책점": d["자책점"],
+                        "방어율": era,
+                    })
+
+            elif opp_idx:
+                # 2순위 or 3순위: 랭킹 페이지 스탯
+                if is_current_league:
+                    priority = "current_league"
+                    print("  2순위(소속 리그 기준): 랭킹 페이지")
+                else:
+                    priority = "next_league"
+                    print("  3순위(예정 리그 기준): 랭킹 페이지")
+                opp_batters  = fetch_hitter_ranking(cur_season, opp_idx)
+                opp_pitchers = fetch_pitcher_ranking(cur_season, opp_idx)
+                opp_batters  = [b for b in opp_batters  if b.get("경기", 0) > 0]
+                opp_pitchers = [p for p in opp_pitchers if p.get("경기", 0) > 0]
+            else:
+                print("  상대팀 idx 없음: 스카우팅 건너뜀")
+
+            if priority:
+                scouting = {
+                    "opponent":          opp_name,
+                    "opponent_idx":      opp_idx,
+                    "game_date":         next_opp["날짜"],
+                    "priority":          priority,
+                    "head_to_head_count": len(head_to_head),
+                    "batters":           opp_batters,
+                    "pitchers":          opp_pitchers,
+                }
+                print(f"  타자 {len(opp_batters)}명 · 투수 {len(opp_pitchers)}명 수집")
 
     data = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
