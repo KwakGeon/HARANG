@@ -532,10 +532,18 @@ function renderMVP() {
   }
 
   const selectedLeague = document.getElementById('filterLeague').value;
-  const mvpLeagues     = mvpData.leagues || [];
-  if (selectedLeague !== 'all' && mvpLeagues.length > 0 && !mvpLeagues.includes(selectedLeague)) {
-    el.innerHTML = '<div class="alert alert-secondary mt-2"><b>해당 리그는 아직 경기 전입니다.</b><br><small class="text-muted">경기가 시작되면 MVP 통계가 표시됩니다.</small></div>';
-    return;
+  if (selectedLeague !== 'all') {
+    // leagues 필드가 있으면 사용, 없으면 allGames의 완료 경기(game_idx 있는 것)에서 파생
+    const mvpLeagues = (mvpData.leagues && mvpData.leagues.length > 0)
+      ? mvpData.leagues
+      : [...new Set(allGames
+          .filter(g => g['game_idx'] && String(g['시즌']) === String(mvpData.season))
+          .map(g => g['리그'])
+          .filter(Boolean))];
+    if (!mvpLeagues.includes(selectedLeague)) {
+      el.innerHTML = '<div class="alert alert-secondary mt-2"><b>해당 리그는 아직 경기 전입니다.</b><br><small class="text-muted">경기가 시작되면 MVP 통계가 표시됩니다.</small></div>';
+      return;
+    }
   }
 
   const { season, total_games, batter, pitcher } = mvpData;
