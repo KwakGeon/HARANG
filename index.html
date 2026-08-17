@@ -761,17 +761,28 @@ function renderScouting() {
 
   // 리그 필터에 맞는 scouting 데이터 선택
   const selectedLeague = document.getElementById('filterLeague').value;
-  let activeData;
+  let activeData, leagueMismatch = false;
   if (selectedLeague === 'all') {
-    activeData = scoutingData;  // 전체: 가장 빠른 예정 경기
+    activeData = scoutingData;
   } else {
     activeData = scoutingByLeague.find(s => s.league === selectedLeague) || null;
+    // 선택 리그 예정 경기 없으면 가장 빠른 예정 경기로 fallback
+    if (!activeData && scoutingData) {
+      activeData = scoutingData;
+      leagueMismatch = true;
+    }
   }
 
   if (!activeData) {
     el.innerHTML = '<div class="alert alert-secondary mt-3"><b>다음 예정된 경기가 없습니다.</b><br><small class="text-muted">예정 경기가 등록되면 generate_data.py를 다시 실행해주세요.</small></div>';
     return;
   }
+
+  const mismatchBanner = leagueMismatch
+    ? `<div class="alert alert-info py-2 mb-3 small">
+         <b>${escHtml(selectedLeague)}</b> 예정 경기가 없어 다음 경기(<b>${escHtml(activeData.league)}</b>) 기준으로 표시합니다.
+       </div>`
+    : '';
 
   const { opponent, game_date, priority, head_to_head_count = 0, batters = [], pitchers = [] } = activeData;
 
@@ -874,6 +885,7 @@ function renderScouting() {
       : `<span class="badge bg-secondary ms-2">예정 리그 기준</span>`;
 
   el.innerHTML = `
+    ${mismatchBanner}
     <div class="alert alert-primary d-flex align-items-center gap-3 mb-3 mt-1">
       <span style="font-size:1.8rem">🎯</span>
       <div>
