@@ -17,6 +17,7 @@
       .stat-value { font-size: 1.25rem; }
       #statsRow .text-muted { font-size: 0.65rem !important; }
       .stat-card .card-body { padding: 0.4rem 0.15rem !important; }
+      .mob-hide { display: none !important; }
     }
     .nav-tabs .nav-link { color: #555; font-weight: 500; }
     .nav-tabs .nav-link.active { color: #1a2e4a; font-weight: 700; border-bottom: 3px solid #1a2e4a; }
@@ -354,15 +355,32 @@ function _resultRank(r) {
 // 히스토리 테이블 컬럼 정의
 const _HIST_COLS = [
   { key: '날짜',   label: '날짜',   cls: '' },
-  { key: '시즌',   label: '시즌',   cls: 'text-center' },
+  { key: '시즌',   label: '시즌',   cls: 'text-center',  mobHide: true },
   { key: '상대팀', label: '상대팀', cls: '' },
   { key: '점수',   label: '점수',   cls: 'text-center' },
-  { key: '득실차', label: '득실차', cls: 'text-center' },
+  { key: '득실차', label: '득실차', cls: 'text-center',  mobHide: true },
   { key: '결과',   label: '결과',   cls: 'text-center' },
-  { key: null,     label: '리그',   cls: '' },
-  { key: null,     label: '구장',   cls: '' },
+  { key: null,     label: '리그',   cls: '',             mobHide: true },
+  { key: null,     label: '구장',   cls: '',             mobHide: true },
   { key: null,     label: '',       cls: '' },
 ];
+
+// "8월11일(토)" → "08.11(토)"
+function _fmtDateMobile(s) {
+  const m = s && s.match(/(\d+)월(\d+)일(.*)/);
+  if (!m) return s;
+  return String(m[1]).padStart(2,'0') + '.' + String(m[2]).padStart(2,'0') + (m[3] || '');
+}
+
+// 리뷰 행 토글 (버튼 라벨 반응형 복원)
+function _toggleReview(btn, rid) {
+  const el = document.getElementById(rid);
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : '';
+  btn.innerHTML = isOpen
+    ? '<span class="d-none d-sm-inline">📋 리뷰 보기</span><span class="d-sm-none">리뷰</span>'
+    : '닫기';
+}
 
 function _histSortBy(col) {
   if (histSort.col === col) histSort.dir *= -1;
@@ -375,10 +393,11 @@ function _renderHistHead() {
   const thead = document.getElementById('histHead');
   if (!thead) return;
   thead.innerHTML = '<tr>' + _HIST_COLS.map(c => {
-    if (!c.key) return `<th class="${c.cls}">${c.label}</th>`;
+    const mc = c.mobHide ? ' mob-hide' : '';
+    if (!c.key) return `<th class="${c.cls}${mc}">${c.label}</th>`;
     const active = histSort.col === c.key;
     const icon = active ? (histSort.dir === 1 ? ' ↑' : ' ↓') : ' <span style="opacity:.25">↕</span>';
-    return `<th class="${c.cls}" data-sort="${c.key}">${c.label}${icon}</th>`;
+    return `<th class="${c.cls}${mc}" data-sort="${c.key}">${c.label}${icon}</th>`;
   }).join('') + '</tr>';
   // 헤더 클릭 이벤트 (innerHTML 교체 후 재등록)
   thead.querySelectorAll('th[data-sort]').forEach(th =>
@@ -424,11 +443,9 @@ function _renderHistBody(games, opp) {
     const worstHtml = worst.map(s => `<li>⚠️ ${escHtml(s)}</li>`).join('');
 
     const reviewBtn = hasReview
-      ? `<button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="
-           const el=document.getElementById('${rid}');
-           const v=el.style.display!=='none';
-           el.style.display=v?'none':'';
-           this.textContent=v?'📋 리뷰 보기':'닫기';">📋 리뷰 보기</button>`
+      ? `<button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="_toggleReview(this,'${rid}')">
+           <span class="d-none d-sm-inline">📋 리뷰 보기</span><span class="d-sm-none">리뷰</span>
+         </button>`
       : '';
 
     const reviewRow = hasReview ? `
@@ -451,14 +468,17 @@ function _renderHistBody(games, opp) {
 
     return `
       <tr>
-        <td class="small text-nowrap">${escHtml(g['날짜'])}</td>
-        <td class="text-center small">${g['시즌']}</td>
+        <td class="small text-nowrap">
+          <span class="d-none d-sm-inline">${escHtml(g['날짜'])}</span>
+          <span class="d-sm-none">${_fmtDateMobile(g['날짜'])}</span>
+        </td>
+        <td class="text-center small mob-hide">${g['시즌']}</td>
         <td class="fw-bold">${escHtml(g['상대팀'])}</td>
         <td class="text-center fw-bold">${g['우리팀_점수']} - ${g['상대팀_점수']}</td>
-        <td class="text-center ${diffCls}">${diffStr}</td>
+        <td class="text-center ${diffCls} mob-hide">${diffStr}</td>
         <td class="text-center"><span class="result-badge ${bcls}">${escHtml(r)}</span></td>
-        <td class="small">${escHtml(g['리그'] || '')}</td>
-        <td class="small text-muted">${escHtml(g['구장'] || '')}</td>
+        <td class="small mob-hide">${escHtml(g['리그'] || '')}</td>
+        <td class="small text-muted mob-hide">${escHtml(g['구장'] || '')}</td>
         <td class="text-end">${reviewBtn}</td>
       </tr>${reviewRow}`;
   }).join('');
