@@ -12,6 +12,12 @@
     .header-bar { background: #1a2e4a; color: #fff; padding: 1rem 1.5rem; border-radius: 12px; }
     .stat-card { border-radius: 12px; border: none; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
     .stat-value { font-size: 1.8rem; font-weight: 700; }
+    #statsRow .text-muted { white-space: nowrap; }
+    @media (max-width: 576px) {
+      .stat-value { font-size: 1.25rem; }
+      #statsRow .text-muted { font-size: 0.65rem !important; }
+      .stat-card .card-body { padding: 0.4rem 0.15rem !important; }
+    }
     .nav-tabs .nav-link { color: #555; font-weight: 500; }
     .nav-tabs .nav-link.active { color: #1a2e4a; font-weight: 700; border-bottom: 3px solid #1a2e4a; }
     .badge-win  { background: #28a745; color: #fff; }
@@ -159,6 +165,24 @@ function initFilters() {
   const sl = document.getElementById('filterLeague');
   sl.innerHTML = '<option value="all">전체 리그</option>' +
     leagues.map(l => `<option value="${escHtml(l)}">${escHtml(l)}</option>`).join('');
+
+  // 현재 소속 리그 자동 선택:
+  // 각 리그의 첫 경기 날짜(우리 일정 기준)를 구해 오늘 이후 시작한 리그 중 가장 최근 시작 리그 선택
+  const todayMs = new Date().setHours(0, 0, 0, 0);
+  const leagueFirstMs = {};
+  for (const g of allGames) {
+    if (String(g['시즌']) !== String(curYear) || !g['리그']) continue;
+    const m = g['날짜'] && g['날짜'].match(/(\d+)월(\d+)일/);
+    if (!m) continue;
+    const ms = new Date(curYear, parseInt(m[1]) - 1, parseInt(m[2])).getTime();
+    const lg = g['리그'];
+    if (leagueFirstMs[lg] === undefined || ms < leagueFirstMs[lg]) leagueFirstMs[lg] = ms;
+  }
+  let curLeague = null, latestMs = -Infinity;
+  for (const [lg, ms] of Object.entries(leagueFirstMs)) {
+    if (ms <= todayMs && ms > latestMs) { latestMs = ms; curLeague = lg; }
+  }
+  if (curLeague) sl.value = curLeague;
 
   function onFilterChange() { render(); renderMVP(); renderScouting(); }
   ss.addEventListener('change', onFilterChange);
