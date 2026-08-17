@@ -599,7 +599,7 @@ function renderMVP() {
   const batOPS = sortBatter(batter,  'OPS',    false);
   const batSB  = sortBatter(batter,  '도루',   false);
   const batSO  = sortBatter(batter,  '삼진',   true);
-  const batATT = sortBatter(batter,  '출석률', false);
+  const batATT = sortAll(batter,     '출석률', false);
 
   el.innerHTML = `
     <div class="alert alert-info d-flex align-items-center gap-2 mb-3 mt-1">
@@ -623,7 +623,7 @@ function renderMVP() {
       ${awardCard('OPS',       batOPS, 'OPS',    '',   null,            null, fmt3,   false, true)}
       ${awardCard('도루',      batSB,  '도루',   '개', null,            null, null,   false, true)}
       ${awardCard('최소 삼진', batSO,  '삼진',   '개', '낮을수록 Good', null, null,   false, true)}
-      ${awardCard('출석왕',    batATT, '출석률', '%',  null,            null, fmtPct, false, true)}
+      ${awardCard('출석왕',    batATT, '출석률', '%',  null,            null, fmtPct, false, false)}
     </div>`;
 
   initMVPPopovers();
