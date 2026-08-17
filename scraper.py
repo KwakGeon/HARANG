@@ -233,8 +233,14 @@ def parse_upcoming_row(row):
         return None
 
 
-def scrape_next_opponent(season):
-    """Page 1 of the season schedule: return the first upcoming (unplayed) game, or None."""
+def scrape_next_opponent(season, today=None):
+    """Return the earliest scheduled game whose date >= today, or None.
+
+    Filters by date to avoid treating past unrecorded games as upcoming.
+    """
+    from datetime import date as _date, datetime as _dt
+    if today is None:
+        today = _dt.today().date()
     url = (
         f"{BASE_URL}/club/info/schedule/table"
         f"?season={season}&club_idx={CLUB_IDX}&game_type=0&lig_idx=0&group=0&month=0&page=1"
@@ -243,11 +249,24 @@ def scrape_next_opponent(season):
     if not html:
         return None
     soup = BeautifulSoup(html, "html.parser")
+    upcoming = []
     for row in soup.find_all("tr"):
         g = parse_upcoming_row(row)
-        if g:
-            return g
-    return None
+        if not g:
+            continue
+        m = re.search(r'(\d+)월(\d+)일', g["날짜"])
+        if not m:
+            continue
+        try:
+            gd = _date(season, int(m.group(1)), int(m.group(2)))
+        except ValueError:
+            continue
+        if gd >= today:
+            upcoming.append((gd, g))
+    if not upcoming:
+        return None
+    upcoming.sort(key=lambda x: x[0])
+    return upcoming[0][1]
 
 
 def fetch_hitter_ranking(season, club_idx=CLUB_IDX):
