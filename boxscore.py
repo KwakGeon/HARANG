@@ -117,20 +117,24 @@ def parse_batter_row(cells):
 
 
 def parse_pitcher_row(cells):
-    """투수 한 행 파싱"""
-    if len(cells) < 16:
+    """투수 한 행 파싱
+    실제 컬럼 순서: 이름(0) 결과(1) 이닝(2) 타자(3) 타수(4) 피안타(5)
+                   피홈런(6) ?(7) 희타(8) 볼넷(9) 고볼(10) 사구(11)
+                   삼진(12) ?(13) 실점(14) 자책점(15) 투구수(16) ERA(17) WHIP(18)
+    """
+    if len(cells) < 17:
         return None
     try:
         return {
             "name":   cells[0],
-            "결과":   cells[2],
-            "이닝":   cells[3],
-            "볼넷":   int(cells[10]) if cells[10].isdigit() else 0,
+            "결과":   cells[1],
+            "이닝":   cells[2],
+            "볼넷":   int(cells[9])  if cells[9].isdigit()  else 0,
             "사구":   int(cells[11]) if cells[11].isdigit() else 0,
             "삼진":   int(cells[12]) if cells[12].isdigit() else 0,
-            "실점":   int(cells[15]) if cells[15].isdigit() else 0,
-            "자책점": int(cells[16]) if cells[16].isdigit() else 0,
-            "투구수": int(cells[17]) if cells[17].isdigit() else 0,
+            "실점":   int(cells[14]) if cells[14].isdigit() else 0,
+            "자책점": int(cells[15]) if cells[15].isdigit() else 0,
+            "투구수": int(cells[16]) if cells[16].isdigit() else 0,
         }
     except Exception:
         return None

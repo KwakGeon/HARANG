@@ -20,6 +20,13 @@ def _parse_innings(s):
         return 0.0
 
 
+def _parse_box_innings(s):
+    """박스스코어 이닝 파싱: '3 할' '2' '7.1' 등 → 실수
+    이닝 셀에 한글 접미사가 붙는 경우 숫자 앞부분만 추출."""
+    m = re.match(r'(\d+(?:\.\d+)?)', str(s or '0').strip())
+    return _parse_innings(m.group(1)) if m else 0.0
+
+
 def _short_name(name):
     """'곽건(32)' → '곽건'  (집계 키용)"""
     m = re.match(r'^([가-힣]{2,5})', name)
@@ -266,13 +273,14 @@ def main():
             opp_league = next_opp.get("리그", "")
             print(f"  예정 경기: {next_opp['날짜']} vs {opp_name} [{opp_league}]")
 
-            # 현재 리그 판별
-            is_current_league = "토요리그" in opp_league
+            # 예정 경기와 동일 리그인 게임이 우리 시즌 기록에 있으면 현재 소속 리그
+            our_season_games = [g for g in unique if g.get("시즌") == cur_season]
+            is_current_league = any(g.get("리그") == opp_league for g in our_season_games)
 
-            # 현재 리그에서의 상대전적 (이미 치른 경기)
+            # 리그명 완전 일치로 상대전적 필터 (부분 매칭 제거)
             head_to_head = [g for g in unique
                             if g.get("상대팀") == opp_name
-                            and "토요리그" in g.get("리그", "")]
+                            and g.get("리그") == opp_league]
 
             opp_batters  = []
             opp_pitchers = []
@@ -336,7 +344,7 @@ def main():
                         d["볼넷"]  += p.get("볼넷", 0)
                         d["자책점"] += p.get("자책점", 0)
                         d["실점"]  += p.get("실점", 0)
-                        d["이닝"]  += _parse_innings(p.get("이닝", "0"))
+                        d["이닝"]  += _parse_box_innings(p.get("이닝", "0"))
 
                 # 타자 파생 지표
                 for nm, d in bat_agg.items():
