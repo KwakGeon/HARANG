@@ -196,9 +196,63 @@ def scrape_season(season):
     return all_games
 
 
-def fetch_hitter_ranking(season):
+def parse_upcoming_row(row):
+    """Schedule rows that have team names but no valid scores yet (upcoming games)."""
+    try:
+        tds = row.find_all("td")
+        if len(tds) < 4:
+            return None
+        game_td = tds[3]
+        if not game_td.find("div", class_="game"):
+            return None
+        scores_raw = [s.get_text(strip=True) for s in game_td.find_all("span", class_="score")]
+        try:
+            int(scores_raw[0])
+            return None  # already played
+        except (ValueError, IndexError):
+            pass
+        team_names = [s.get_text(strip=True) for s in game_td.find_all("span", class_="team_name")]
+        if len(team_names) < 2:
+            return None
+        if team_names[0] == MY_TEAM:
+            opp_name = team_names[1]
+        elif team_names[1] == MY_TEAM:
+            opp_name = team_names[0]
+        else:
+            return None
+        date_str = tds[0].get_text(strip=True)
+        opponent_idx = None
+        for a in game_td.find_all("a", href=True):
+            href = a["href"]
+            if "club_idx=" in href and "club/?" in href:
+                m = re.search(r"club_idx=(\d+)", href)
+                if m and int(m.group(1)) != CLUB_IDX:
+                    opponent_idx = int(m.group(1))
+        return {"날짜": date_str, "상대팀": opp_name, "상대팀_idx": opponent_idx}
+    except Exception:
+        return None
+
+
+def scrape_next_opponent(season):
+    """Page 1 of the season schedule: return the first upcoming (unplayed) game, or None."""
+    url = (
+        f"{BASE_URL}/club/info/schedule/table"
+        f"?season={season}&club_idx={CLUB_IDX}&game_type=0&lig_idx=0&group=0&month=0&page=1"
+    )
+    html = get_page(url)
+    if not html:
+        return None
+    soup = BeautifulSoup(html, "html.parser")
+    for row in soup.find_all("tr"):
+        g = parse_upcoming_row(row)
+        if g:
+            return g
+    return None
+
+
+def fetch_hitter_ranking(season, club_idx=CLUB_IDX):
     """gameone.kr 타자 랭킹 페이지에서 시즌 스탯 직접 수집 (공식 집계값)"""
-    url = f"{BASE_URL}/club/info/ranking/hitter?club_idx={CLUB_IDX}&season={season}"
+    url = f"{BASE_URL}/club/info/ranking/hitter?club_idx={club_idx}&season={season}"
     html = get_page(url)
     if not html:
         return []
@@ -246,9 +300,9 @@ def fetch_hitter_ranking(season):
     return batters
 
 
-def fetch_pitcher_ranking(season):
+def fetch_pitcher_ranking(season, club_idx=CLUB_IDX):
     """gameone.kr 투수 랭킹 페이지에서 시즌 스탯 직접 수집 (방어율 정확도 보장)"""
-    url = f"{BASE_URL}/club/info/ranking/pitcher?club_idx={CLUB_IDX}&season={season}"
+    url = f"{BASE_URL}/club/info/ranking/pitcher?club_idx={club_idx}&season={season}"
     html = get_page(url)
     if not html:
         return []
@@ -264,11 +318,16 @@ def fetch_pitcher_ranking(season):
         try:
             era_raw = cells[2]
             era = float(era_raw) if era_raw not in ("-", "", "∞") else 99.99
+            try:
+                bb = int(cells[16]) if len(cells) > 16 and cells[16].isdigit() else 0
+            except (IndexError, ValueError):
+                bb = 0
             pitchers.append({
                 "name":   cells[1],
                 "경기":   int(cells[3])  if cells[3].isdigit()  else 0,
                 "이닝":   cells[12],
                 "삼진":   int(cells[20]) if cells[20].isdigit() else 0,
+                "볼넷":   bb,
                 "실점":   int(cells[23]) if cells[23].isdigit() else 0,
                 "자책점": int(cells[24]) if cells[24].isdigit() else 0,
                 "방어율": era,

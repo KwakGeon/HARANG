@@ -1,4 +1,4 @@
-from scraper import scrape_season, fetch_pitcher_ranking, fetch_hitter_ranking
+from scraper import scrape_season, fetch_pitcher_ranking, fetch_hitter_ranking, scrape_next_opponent
 from boxscore import fetch_boxscore, generate_best_worst, extract_player_stats
 import json
 import re
@@ -251,11 +251,51 @@ def main():
                 })
             mvp_stats["batter"] = batters
 
+    # ── 전력분석: 다음 경기 상대팀 스카우팅 ────────────────────
+    scouting = None
+    if mvp_stats:
+        print("\n전력분석 수집 중...")
+        next_opp = scrape_next_opponent(cur_season)
+        is_upcoming = next_opp is not None
+
+        if not next_opp:
+            # 폴백: 현 시즌 가장 최근 경기 상대팀 (game_idx 있는 것 중)
+            cur_games = [g for g in unique if g.get("시즌") == cur_season and g.get("상대팀_idx")]
+            if cur_games:
+                last_g = cur_games[-1]
+                next_opp = {
+                    "날짜":       last_g["날짜"],
+                    "상대팀":     last_g["상대팀"],
+                    "상대팀_idx": last_g.get("상대팀_idx"),
+                }
+
+        if next_opp and next_opp.get("상대팀_idx"):
+            opp_idx  = next_opp["상대팀_idx"]
+            opp_name = next_opp["상대팀"]
+            print(f"  상대팀: {opp_name} (idx={opp_idx})")
+            opp_batters  = fetch_hitter_ranking(cur_season, opp_idx)
+            opp_pitchers = fetch_pitcher_ranking(cur_season, opp_idx)
+            # 경기 기록이 없는 선수 제외
+            opp_batters  = [b for b in opp_batters  if b.get("경기", 0) > 0]
+            opp_pitchers = [p for p in opp_pitchers if p.get("경기", 0) > 0]
+            scouting = {
+                "opponent":     opp_name,
+                "opponent_idx": opp_idx,
+                "game_date":    next_opp["날짜"],
+                "is_upcoming":  is_upcoming,
+                "batters":      opp_batters,
+                "pitchers":     opp_pitchers,
+            }
+            print(f"  타자 {len(opp_batters)}명 · 투수 {len(opp_pitchers)}명 수집")
+        else:
+            print("  상대팀 idx 없음 — 스카우팅 건너뜀")
+
     data = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "total":        len(unique),
         "games":        unique,
         "mvp_stats":    mvp_stats,
+        "scouting":     scouting,
     }
 
     with open("games_data.json", "w", encoding="utf-8") as f:

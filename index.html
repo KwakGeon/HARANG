@@ -87,27 +87,31 @@
       <li class="nav-item"><button class="nav-link" data-tab="history">📋 경기 히스토리</button></li>
       <li class="nav-item"><button class="nav-link" data-tab="charts">📈 차트 분석</button></li>
       <li class="nav-item"><button class="nav-link" data-tab="mvp">🏆 MVP</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="scouting">🎯 전력분석</button></li>
     </ul>
 
     <div id="tabSummary"></div>
-    <div id="tabHistory" style="display:none"></div>
-    <div id="tabCharts"  style="display:none"></div>
-    <div id="tabMvp"     style="display:none"></div>
+    <div id="tabHistory"  style="display:none"></div>
+    <div id="tabCharts"   style="display:none"></div>
+    <div id="tabMvp"      style="display:none"></div>
+    <div id="tabScouting" style="display:none"></div>
 
   </div>
 </div>
 
 <!-- 모바일 하단 탭바 -->
 <nav class="mobile-bottom-nav">
-  <button class="mob-tab active" data-tab="summary"><span class="mob-icon">📊</span><span class="mob-label">상대전적</span></button>
-  <button class="mob-tab" data-tab="history"><span class="mob-icon">📋</span><span class="mob-label">전적</span></button>
+  <button class="mob-tab active" data-tab="summary"><span class="mob-icon">📊</span><span class="mob-label">전적</span></button>
+  <button class="mob-tab" data-tab="history"><span class="mob-icon">📋</span><span class="mob-label">히스토리</span></button>
   <button class="mob-tab" data-tab="charts"><span class="mob-icon">📈</span><span class="mob-label">차트</span></button>
   <button class="mob-tab" data-tab="mvp"><span class="mob-icon">🏆</span><span class="mob-label">MVP</span></button>
+  <button class="mob-tab" data-tab="scouting"><span class="mob-icon">🎯</span><span class="mob-label">전력분석</span></button>
 </nav>
 
 <script>
-let allGames = [];
-let mvpData  = null;
+let allGames     = [];
+let mvpData      = null;
+let scoutingData = null;
 let charts = {};
 let histSort = { col: '날짜', dir: -1 };  // 기본: 날짜 내림차순
 
@@ -118,8 +122,9 @@ fetch('games_data.json')
     return r.json();
   })
   .then(data => {
-    allGames = data.games;
-    mvpData  = data.mvp_stats || null;
+    allGames     = data.games;
+    mvpData      = data.mvp_stats  || null;
+    scoutingData = data.scouting   || null;
     document.getElementById('updated').textContent = '마지막 업데이트: ' + data.generated_at;
     try {
       initFilters();
@@ -127,6 +132,7 @@ fetch('games_data.json')
       document.getElementById('app').style.display = '';
       render();
       renderMVP();
+      renderScouting();
     } catch(e) {
       document.getElementById('loading').innerHTML =
         '<div class="alert alert-warning"><b>렌더링 오류:</b> ' + e.message + '<br><pre>' + e.stack + '</pre></div>';
@@ -505,7 +511,7 @@ document.addEventListener('click', e => {
   document.querySelectorAll('[data-tab]').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
-  ['summary','history','charts','mvp'].forEach(t => {
+  ['summary','history','charts','mvp','scouting'].forEach(t => {
     const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     el.style.display = t === tab ? '' : 'none';
   });
@@ -673,6 +679,212 @@ function renderMVP() {
     </div>`;
 
   initMVPPopovers();
+}
+
+/* ── 전력분석 탭 ── */
+function renderScouting() {
+  const el = document.getElementById('tabScouting');
+  if (!el) return;
+
+  if (!scoutingData) {
+    el.innerHTML = '<div class="alert alert-secondary mt-2">전력분석 데이터가 없습니다. <code>generate_data.py</code>를 다시 실행해주세요.</div>';
+    return;
+  }
+
+  const { opponent, game_date, is_upcoming, batters = [], pitchers = [] } = scoutingData;
+
+  // 이닝 문자열 "11.1" → 실수 (아웃카운트 기반)
+  function parsIP(s) {
+    const str = String(s || '0');
+    if (str.includes('.')) {
+      const [full, outs] = str.split('.');
+      return parseInt(full) + parseInt(outs || '0') / 3;
+    }
+    return parseFloat(str) || 0;
+  }
+
+  // 투수 유형 분류
+  function classifyPitcher(p) {
+    const ip = parsIP(p['이닝']);
+    if (ip === 0 || !p['경기']) return { label: '기록없음', color: 'secondary' };
+    const k9  = p['삼진'] / ip * 9;
+    const bb9 = (p['볼넷'] || 0) / ip * 9;
+    if (bb9 <= 3.0 && k9 >= 5.0) return { label: '제구형', color: 'warning' };
+    if (k9 >= 7.0)                return { label: '파워형', color: 'danger'  };
+    if (bb9 > 4.5)                return { label: '불안형', color: 'info'    };
+    return { label: '일반형', color: 'primary' };
+  }
+
+  // 팀 투수 집계
+  const pitTotals = pitchers.reduce((s, p) => {
+    const ip = parsIP(p['이닝']);
+    s.ip  += ip;
+    s.k   += p['삼진']   || 0;
+    s.bb  += p['볼넷']   || 0;
+    s.er  += p['자책점'] || 0;
+    return s;
+  }, { ip: 0, k: 0, bb: 0, er: 0 });
+  const teamERA = pitTotals.ip > 0 ? (pitTotals.er / pitTotals.ip * 7).toFixed(2) : '-';
+  const teamK9  = pitTotals.ip > 0 ? (pitTotals.k  / pitTotals.ip * 9).toFixed(1) : '-';
+
+  // 팀 타자 집계
+  const batTotals = batters.reduce((s, b) => {
+    s.h  += b['안타'] || 0;
+    s.ab += b['타수'] || 0;
+    s.hr += b['홈런'] || 0;
+    s.rbi += b['타점'] || 0;
+    return s;
+  }, { h: 0, ab: 0, hr: 0, rbi: 0 });
+  const teamAVG = batTotals.ab > 0 ? (batTotals.h / batTotals.ab).toFixed(3) : '-';
+
+  // 타자: OPS 내림차순
+  const sortedBatters = [...batters].sort((a, b) => (b['OPS'] || 0) - (a['OPS'] || 0));
+
+  // 투수 행
+  const pitcherRows = pitchers.map(p => {
+    const ip  = parsIP(p['이닝']);
+    const k9  = ip > 0 ? (p['삼진'] / ip * 9).toFixed(1)           : '-';
+    const bb9 = ip > 0 ? ((p['볼넷'] || 0) / ip * 9).toFixed(1)    : '-';
+    const cls = classifyPitcher(p);
+    const era = (p['방어율'] || 0);
+    const eraCls = era <= 3.0 ? 'text-danger fw-bold' : era >= 6.0 ? 'text-muted' : '';
+    return `<tr>
+      <td class="fw-bold">${escHtml(p['name'])}</td>
+      <td class="text-center">${p['경기']}</td>
+      <td class="text-center">${p['이닝']}</td>
+      <td class="text-center ${eraCls}">${era.toFixed(2)}</td>
+      <td class="text-center">${p['삼진']}</td>
+      <td class="text-center">${p['볼넷'] !== undefined ? p['볼넷'] : '-'}</td>
+      <td class="text-center">${k9}</td>
+      <td class="text-center">${bb9}</td>
+      <td class="text-center"><span class="badge bg-${cls.color}">${cls.label}</span></td>
+    </tr>`;
+  }).join('');
+
+  // 타자 행
+  const batterRows = sortedBatters.map((b, i) => {
+    const threat = i < 3
+      ? '<span class="badge bg-danger ms-1" style="font-size:.65rem">주의</span>'
+      : i < 6
+        ? '<span class="badge bg-warning text-dark ms-1" style="font-size:.65rem">경계</span>'
+        : '';
+    const rowCls = i < 3 ? 'table-danger' : i < 6 ? 'table-warning' : '';
+    return `<tr class="${rowCls}">
+      <td class="fw-bold">${escHtml(b['name'])}${threat}</td>
+      <td class="text-center">${b['경기']}</td>
+      <td class="text-center">${(b['정규타율'] || 0).toFixed(3)}</td>
+      <td class="text-center">${b['타점']}</td>
+      <td class="text-center">${b['홈런']}</td>
+      <td class="text-center">${(b['SLG'] || 0).toFixed(3)}</td>
+      <td class="text-center fw-bold">${(b['OPS'] || 0).toFixed(3)}</td>
+    </tr>`;
+  }).join('');
+
+  const statusBadge = is_upcoming
+    ? `<span class="badge bg-success ms-2">다음 경기 예정</span>`
+    : `<span class="badge bg-secondary ms-2">최근 상대팀</span>`;
+
+  el.innerHTML = `
+    <div class="alert alert-primary d-flex align-items-center gap-3 mb-3 mt-1">
+      <span style="font-size:1.8rem">🎯</span>
+      <div>
+        <div class="fw-bold fs-6">${escHtml(opponent)}${statusBadge}</div>
+        <small class="opacity-75">${escHtml(game_date)} 기준 &nbsp;·&nbsp; 시즌 누적 데이터</small>
+      </div>
+    </div>
+
+    <div class="row g-2 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-2 px-1">
+          <div class="fw-bold fs-5 text-danger">${teamERA}</div>
+          <div class="text-muted" style="font-size:.78rem">팀 방어율</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-2 px-1">
+          <div class="fw-bold fs-5 text-primary">${teamK9}</div>
+          <div class="text-muted" style="font-size:.78rem">K/9 (삼진/9이닝)</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-2 px-1">
+          <div class="fw-bold fs-5 text-success">${teamAVG}</div>
+          <div class="text-muted" style="font-size:.78rem">팀 타율</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-2 px-1">
+          <div class="fw-bold fs-5 text-warning">${batTotals.hr}</div>
+          <div class="text-muted" style="font-size:.78rem">팀 홈런</div>
+        </div>
+      </div>
+    </div>
+
+    <h5 class="fw-bold text-secondary mb-2">⚾ 투수 분석</h5>
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-dark text-white py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span class="small fw-bold">투수 유형 분류 기준</span>
+        <div class="d-flex gap-1 flex-wrap" style="font-size:.72rem">
+          <span class="badge bg-warning text-dark">제구형 = BB/9≤3.0 &amp; K/9≥5.0</span>
+          <span class="badge bg-danger">파워형 = K/9≥7.0</span>
+          <span class="badge bg-info text-dark">불안형 = BB/9&gt;4.5</span>
+          <span class="badge bg-primary">일반형</span>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover table-sm align-middle mb-0">
+            <thead class="table-secondary">
+              <tr>
+                <th>선수</th>
+                <th class="text-center">경기</th>
+                <th class="text-center">이닝</th>
+                <th class="text-center">방어율</th>
+                <th class="text-center">삼진</th>
+                <th class="text-center">볼넷</th>
+                <th class="text-center">K/9</th>
+                <th class="text-center">BB/9</th>
+                <th class="text-center">유형</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pitcherRows || '<tr><td colspan="9" class="text-center text-muted py-3">투수 데이터 없음</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <h5 class="fw-bold text-secondary mb-2">🏏 주의 타자 리스트</h5>
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-dark text-white py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span class="small fw-bold">OPS 기준 내림차순 정렬</span>
+        <div class="d-flex gap-1 flex-wrap" style="font-size:.72rem">
+          <span class="badge bg-danger">주의 = 1~3위</span>
+          <span class="badge bg-warning text-dark">경계 = 4~6위</span>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover table-sm align-middle mb-0">
+            <thead class="table-secondary">
+              <tr>
+                <th>선수</th>
+                <th class="text-center">경기</th>
+                <th class="text-center">타율</th>
+                <th class="text-center">타점</th>
+                <th class="text-center">홈런</th>
+                <th class="text-center">장타율</th>
+                <th class="text-center">OPS</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${batterRows || '<tr><td colspan="7" class="text-center text-muted py-3">타자 데이터 없음</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
 }
 
 function initMVPPopovers() {
