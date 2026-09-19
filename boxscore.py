@@ -42,7 +42,7 @@ def _is_reach_play(play):
         return False
     tokens = [t.strip() for t in play.split(',')]
     return any(
-        "송구" not in t and (t.endswith("실") or t.endswith("R") or "낫아웃" in t)
+        "송구" not in t and (t.endswith("실") or t.endswith("R") or "낫아웃+" in t)
         for t in tokens
     )
 
